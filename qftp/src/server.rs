@@ -5,7 +5,7 @@ use rustls::{Certificate, PrivateKey};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::   debug;
 
 use crate::connected_client::ConnectedClient;
 
@@ -35,7 +35,7 @@ impl Server {
         loop {
             if let Some(connection) = self.endpoint.accept().await {
                 let connection = connection.await?;
-                debug!("accepted new client connection");
+                debug!("accepted a new client");
                 return ConnectedClient::new(connection).await;
             }
         }

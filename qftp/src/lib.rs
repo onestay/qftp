@@ -3,6 +3,9 @@ pub mod server;
 pub mod client;
 pub mod connected_client;
 pub mod messages;
+mod control_stream;
+pub use control_stream::ControlStream;
+
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -17,5 +20,7 @@ pub enum Error {
     #[error("QUIC write error")]
     WriteError(#[from] quinn::WriteError),
     #[error("Version negotiation failed")]
-    NegotiationError
+    NegotiationError,
+    #[error("Unknown MessageID `{0}`")]
+    MessageIDError(u8),
 }

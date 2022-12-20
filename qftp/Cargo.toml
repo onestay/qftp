@@ -1,0 +1,26 @@
+[package]
+name = "qftp"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+color-eyre = "0.6"
+quinn = {version = "0.9", default-features = false, features = ["tls-rustls", "ring", "runtime-tokio", "native-certs"]}
+tokio = {version = "1", features = ["full"]}
+rustls = {version = "0.20", features=["quic", "dangerous_configuration"], default-features = false}
+rustls-native-certs = "0.6"
+thiserror = "1"
+tracing = "0.1"
+async-trait = "0.1"
+qftp-derive = { path = "../qftp-derive"}
+futures-io = "0.3"
+paste = "1.0"
+
+[dev-dependencies]
+futures = "0.3.0"
+tracing-subscriber = "0.2"
+
+[profile.dev.package.backtrace]
+opt-level = 3

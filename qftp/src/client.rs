@@ -7,7 +7,6 @@ use rustls::{
 
 use tracing::{debug, error, info, span, warn, Level};
 
-use crate::messages::{HelloMessage, Sendable};
 use std::{net::SocketAddr, sync::Arc};
 #[derive(Debug)]
 pub struct Client {
@@ -45,11 +44,6 @@ impl Client {
         Ok(client)
     }
     async fn negotiate_version(&mut self) -> Result<(), Error> {
-        let negotation_message = HelloMessage::default().to_bytes();
-        debug!("Sending version negotiation message: {:?}", negotation_message);
-        self.control_stream.0.write_all(&negotation_message).await?;
-        let mut buf: [u8; 2] = [0; 2];
-        self.control_stream.1.read_exact(&mut buf).await.unwrap();
         Ok(())
     }
 }
