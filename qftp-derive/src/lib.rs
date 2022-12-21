@@ -1,9 +1,22 @@
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
-use quote::{quote, quote_spanned};
+use proc_macro2::{Span, TokenStream as TokenStream2};
+use quote::quote;
 use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::{self, Ident, PathSegment};
+use syn::{self, Ident};
+
+struct TokenStorage {
+    pub recv: Vec<TokenStream2>,
+    pub to_bytes: Vec<TokenStream2>,
+}
+
+impl TokenStorage {
+    fn new() -> Self {
+        TokenStorage {
+            recv: vec![],
+            to_bytes: vec![],
+        }
+    }
+}
 
 #[proc_macro_derive(Message)]
 pub fn message_macro_derive(input: TokenStream) -> TokenStream {
@@ -16,10 +29,12 @@ const NUMERIC_TYPES: [&str; 12] = [
     "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64",
 ];
 
-fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> Vec<TokenStream2> {
-    let mut token_stream = Vec::new();
-
+// TODO: support &str
+// TODO: support simple enums
+fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> TokenStorage {
+    let mut token_storage = TokenStorage::new();
     // loop over every field in the struct
+    let mut previous_field_ident = None;
     for field in fields {
         // field ident is the name of the field
         let field_ident = field.ident.as_ref().unwrap();
@@ -27,70 +42,106 @@ fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> Vec<TokenSt
         // path_segment here is the last segment of the path
         // i.e. std::fs::Path => Path
         // u8 => u8
-        let path_segment = if let syn::Type::Path(syn::TypePath { ref path, .. }) = field.ty {
+        let ty = if let syn::Type::Path(syn::TypePath { ref path, .. }) = field.ty {
             path.segments.last().unwrap()
         } else {
             unimplemented!("Only TypePath supported for now")
         };
 
-        // If the type is numeric (u8, u16, ...), directly add 
-        if NUMERIC_TYPES.contains(&path_segment.ident.to_string().as_str()) {
-            token_stream.push(gen_for_numeric(field.ty.span(), field_ident));
-        } else if path_segment.ident == "Vec" {
-            token_stream.push(gen_for_vec(field, path_segment));
+        // If the type is numeric (u8, u16, ...), directly add TokenStream
+        if NUMERIC_TYPES.contains(&ty.ident.to_string().as_str()) {
+            gen_for_numeric(field_ident, &ty.ident, &mut token_storage);
+            previous_field_ident = Some(field_ident);
+        } else if ty.ident == "Vec" {
+            // Else we have to loop over the vector
+            if let Some(previous_field_ident) = previous_field_ident {
+                gen_for_vec(field, ty, previous_field_ident, &mut token_storage);
+            } else {
+                panic!("the field directly before a collection has to be of numeric type");
+            }
         }
     }
 
-    token_stream
+    token_storage
 }
 
-fn gen_for_numeric(span: proc_macro2::Span, field_ident: &Ident) -> TokenStream2 {
-    let tokens = quote_spanned!(span=> v.extend_from_slice(&self.#field_ident.to_be_bytes()));
-
-    tokens
+fn gen_for_numeric(field_ident: &Ident, type_ident: &Ident, token_storage: &mut TokenStorage) {
+    // Note: we assume the final output Vector is called v
+    let tokens_to_bytes = quote!(v.extend_from_slice(&self.#field_ident.to_be_bytes()));
+    let function_name = Ident::new(format!("read_{}", type_ident).as_str(), Span::call_site());
+    let tokens_recv = quote!(let #field_ident = s.#function_name().await?);
+    token_storage.to_bytes.push(tokens_to_bytes);
+    token_storage.recv.push(tokens_recv);
 }
 
-fn gen_for_vec(field: &syn::Field, path_segement: &syn::PathSegment) -> TokenStream2 {
-    let generics = if let syn::PathSegment {
+fn gen_for_vec(
+    field: &syn::Field,
+    ty: &syn::PathSegment,
+    previous_field_ident: &Ident,
+    token_storage: &mut TokenStorage,
+) {
+    // get the generic type
+    // generics here is the list of arguments in AngleBrackets
+    // Vec<u32> => [u32]
+    // HashMap<u32, String> => [u32, String]
+    let generic = if let syn::PathSegment {
         arguments:
             syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { ref args, .. }),
         ..
-    } = path_segement
+    } = ty
     {
-        args
+        // we only support Vectors here so the generic argument should just be one
+        assert_eq!(args.len(), 1, "Generic arg to Vec has to be 1");
+        args.first().unwrap()
     } else {
         unimplemented!("Generic arg to Vec has to be AngleBracketedGenericArguments")
     };
 
-    if generics.len() != 1 {
-        unimplemented!("Generic arg to Vec has to be 1")
-    }
-
-    let generics = generics.into_iter().next().unwrap();
-    let path = if let syn::GenericArgument::Type(syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..})) = generics {
+    // Type of the generic
+    let ty_generic = if let syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {
+        path: syn::Path { ref segments, .. },
+        ..
+    })) = generic
+    {
         segments.last().unwrap()
     } else {
         unimplemented!("Generic arg to Vec has to be TypePath")
     };
-    
-    let ident = &path.ident;
 
-    if !NUMERIC_TYPES.contains(&ident.to_string().as_str()) {
+    // name of the generic type
+    let ty_generic_ident = &ty_generic.ident;
+
+    // only Vectors with numeric generic are allowed
+    if !NUMERIC_TYPES.contains(&ty_generic_ident.to_string().as_str()) {
         unimplemented!("arg to Vec has to be numeric")
     }
 
-    let vec_field_ident = field.ident.as_ref().unwrap();
-    let outer = quote! {
-        for el in self.#vec_field_ident {
+    // name of the field
+    let field_ident = field.ident.as_ref().unwrap();
+
+    let token_stream = quote! {
+        for el in self.#field_ident {
             v.extend_from_slice(&el.to_be_bytes());
         }
     };
 
-    outer
+    let function_name = Ident::new(
+        format!("read_{}", ty_generic_ident).as_str(),
+        Span::call_site(),
+    );
+    let token_stream_recv = quote! {
+        let mut #field_ident: Vec<#ty_generic_ident> = Vec::new();
+
+        for _ in 0..#previous_field_ident {
+            #field_ident.push(s.#function_name().await?);
+        }
+
+    };
+    token_storage.recv.push(token_stream_recv);
+    token_storage.to_bytes.push(token_stream);
 }
 
 fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
-    eprintln!("{:#?}", ast);
     let fields = if let syn::Data::Struct(syn::DataStruct {
         fields: syn::Fields::Named(syn::FieldsNamed { ref named, .. }),
         ..
@@ -102,28 +153,32 @@ fn impl_message_macro(ast: &syn::DeriveInput) -> TokenStream {
     };
 
     let ts = gen_append(fields);
+    let field_names = fields.iter().map(|field| field.ident.as_ref().unwrap());
+    let ts_recv = &ts.recv;
+    let ts_to_bytes = &ts.to_bytes;
 
-    eprintln!("{:?}", ts);
-
-    //eprintln!("{:#?}", ast);
-    let name = &ast.ident;
+    let struct_name = &ast.ident;
 
     let gen = quote! {
         #[async_trait::async_trait]
-        impl Message for #name {
-            async fn recv<T>(control_stream: &mut T) -> Result<Self, Error>
+        impl Message for #struct_name {
+            async fn recv<T>(s: &mut T) -> Result<Self, Error>
             where
                 Self: Sized,
                 T: Sync + Send + Unpin + tokio::io::AsyncRead,
             {
                 use tokio::io::AsyncReadExt;
-                todo!()
+                #(#ts_recv);*;
+
+                Ok(#struct_name {
+                    #(#field_names),*
+                })
             }
 
             fn to_bytes(self) -> Vec<u8> {
                 let mut v = Vec::new();
 
-                #(#ts);*;
+                #(#ts_to_bytes);*;
 
                 v
             }

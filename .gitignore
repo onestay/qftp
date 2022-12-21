@@ -2,3 +2,4 @@
 /Cargo.lock
 /qftp/target
 /qftp/certs
+.vscode
