@@ -12,26 +12,30 @@ fn read_test_certs() -> (Certificate, PrivateKey) {
     (cert, priv_key)
 }
 
+#[cfg(test)]
 mod test {
-    use qftp::{server::Server, client::Client};
-    use tracing::{info, Level};
-    use tracing_subscriber::FmtSubscriber;
-    #[tokio::test]
-    async fn successful_server_client_connection() {
-        let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .finish();
+    use qftp::{Client, Server};
+    use tracing::Level;
 
-        tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn successful_server_client_connection() {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .init();
 
         let (cert, priv_key) = super::read_test_certs();
         let server = tokio::spawn(async {
-            let server = Server::new("127.0.0.1:2345".parse().unwrap(), cert, priv_key).unwrap();
-            let _ = server.accept().await.unwrap();
+            let server =
+                Server::new("127.0.0.1:2345".parse().unwrap(), cert, priv_key)
+                    .unwrap();
+            let mut connected_client = server.accept().await.unwrap();
+            connected_client.shutdown().await.unwrap();
         });
 
         let client = tokio::spawn(async {
-            let _ = Client::new("127.0.0.1:2345".parse().unwrap()).await.unwrap();
+            let _ = Client::new("127.0.0.1:2345".parse().unwrap())
+                .await
+                .unwrap();
         });
 
         futures::future::join_all(vec![server, client]).await;

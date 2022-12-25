@@ -1,9 +1,9 @@
 use quinn::{Connection, SendStream, RecvStream};
 use tokio::io::AsyncReadExt;
-use crate::Error;
+use crate::{Error, message::Message};
 use crate::control_stream::ControlStream;
 use tracing::{trace, debug, error, info, span, warn, Level};
-
+use crate::message;
 const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
 
 
@@ -13,7 +13,7 @@ pub struct ConnectedClient {
 }
 
 impl ConnectedClient {
-    pub async fn new(connection: Connection) -> Result<Self, Error> {
+    pub(crate) async fn new(connection: Connection) -> Result<Self, Error> {
         trace!("creating new ConnectedClient");
         let control_stream = connection.accept_bi().await?;
         trace!("accepted the control_stream");
@@ -23,11 +23,27 @@ impl ConnectedClient {
         Ok(connected_client)
     }
 
-    async fn negotiate_version(&mut self) -> Result<(), Error> {
-        // first bytes: message ID
-        
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
+        debug!("shutting down the server");
+        trace!("calling finish on the SendStream of the ControlStream");
+        self.control_stream.send().finish().await?;
+        trace!("calling finish on the SendStream of the ControlStream returned");
+        Ok(())
+    }
 
-        Err(Error::NegotiationError)
+    async fn negotiate_version(&mut self) -> Result<(), Error> {
+        debug!("doing version negotation");
+        let version = message::Version::recv(self.control_stream.recv()).await?;
+        trace!("negotation message from client {:?}", version);
+        for version in version.versions() {
+            if SERVER_SUPPORTED_VERSION.contains(version) {
+                trace!("version {} negotiated", version);
+                let version_response = message::VersionResponse::new(*version);
+                self.control_stream.send_message(version_response).await?;
+            }
+        }
+        debug!("finished version negotation");
+        Ok(())
     }
 }
 

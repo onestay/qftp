@@ -1,11 +1,12 @@
 use thiserror::Error;
-pub mod server;
-pub mod client;
+mod server;
+mod client;
 pub mod connected_client;
-pub mod messages;
+pub mod message;
 mod control_stream;
 pub use control_stream::ControlStream;
-
+pub use server::Server;
+pub use client::Client;
 
 #[derive(Error, Debug)]
 pub enum Error {
