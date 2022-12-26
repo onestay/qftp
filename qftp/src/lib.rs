@@ -3,6 +3,7 @@ mod server;
 mod client;
 pub mod connected_client;
 pub mod message;
+pub mod auth;
 mod control_stream;
 pub use control_stream::ControlStream;
 pub use server::Server;
@@ -20,6 +21,10 @@ pub enum Error {
     ConnectError(#[from] quinn::ConnectError),
     #[error("QUIC write error")]
     WriteError(#[from] quinn::WriteError),
+    #[error("serde_json error")]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error("Authentication error")]
+    AuthenticationError(#[from] crate::auth::AuthError),
     #[error("Version negotiation failed")]
     NegotiationError,
     #[error("Unknown MessageID `{0}`")]
