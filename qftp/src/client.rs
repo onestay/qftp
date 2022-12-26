@@ -3,6 +3,7 @@ use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use rustls::{
     client::{ServerCertVerified, ServerCertVerifier},
     Certificate, ClientConfig, RootCertStore,
+    KeyLogFile
 };
 
 use tracing::{debug, error, info, span, warn, Level, trace};
@@ -20,10 +21,11 @@ pub struct Client {
 impl Client {
     fn create_endpoint() -> Result<Endpoint, Error> {
         debug!("Creating client config");
-        let client_config = ClientConfig::builder()
+        let mut client_config = ClientConfig::builder()
             .with_safe_defaults()
             .with_custom_certificate_verifier(Arc::new(DontVerify {}))
             .with_no_client_auth();
+        client_config.key_log = Arc::new(KeyLogFile::new());
         debug!("Creating client");
         let mut client = Endpoint::client(
             "0.0.0.0:0".parse().expect("Failed to parse address"),
@@ -59,6 +61,10 @@ impl Client {
         let response = message::VersionResponse::recv(self.control_stream.recv()).await?;
         trace!("negotation response from server {:?}", response);
         Ok(())
+    }
+
+    async fn login<'a>(&mut self, name: &'a str, password: &'a str) -> Result<(), Error> {
+        todo!()
     }
 }
 

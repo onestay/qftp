@@ -33,6 +33,7 @@ mod test {
         });
 
         let client = tokio::spawn(async {
+            std::env::set_var("SSLKEYLOGFILE", "client.keylog");
             let _ = Client::new("127.0.0.1:2345".parse().unwrap())
                 .await
                 .unwrap();
