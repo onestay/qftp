@@ -29,7 +29,6 @@ const NUMERIC_TYPES: [&str; 12] = [
     "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "f32", "f64",
 ];
 
-// TODO: support &str
 // TODO: support simple enums
 fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> TokenStorage {
     let mut token_storage = TokenStorage::new();
@@ -59,10 +58,37 @@ fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> TokenStorag
             } else {
                 panic!("the field directly before a collection has to be of numeric type");
             }
+            previous_field_ident = None;
+        } else if ty.ident == "String" {
+            if let Some(previous_field_ident) = previous_field_ident {
+                gen_for_str_types(field_ident, &ty.ident, previous_field_ident, &mut token_storage);
+            } else {
+                panic!("the field directly before a String has to be of numeric type");
+            }
+            previous_field_ident = None;
+        } else {
+            panic!("Unsupported type `{}` on field `{}`", ty.ident, field_ident);
         }
     }
 
     token_storage
+}
+
+fn gen_for_str_types(
+    field_ident: &Ident,
+    type_ident: &Ident,
+    previous_field_ident: &Ident,
+    token_storage: &mut TokenStorage,
+) {
+    let token_to_bytes = quote!(v.extend_from_slice(&self.#field_ident.as_bytes()));
+    let token_recv = quote! {
+        let mut buf: Vec<u8> = vec![0; #previous_field_ident.try_into().unwrap()];  
+        s.read_exact(&mut buf[..]).await?;
+        let #field_ident = String::from_utf8(buf).unwrap();
+    };
+
+    token_storage.to_bytes.push(token_to_bytes);
+    token_storage.recv.push(token_recv);
 }
 
 fn gen_for_numeric(field_ident: &Ident, type_ident: &Ident, token_storage: &mut TokenStorage) {
