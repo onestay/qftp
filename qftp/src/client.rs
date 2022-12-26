@@ -1,15 +1,14 @@
-use crate::{Error, message::{Message, LoginResponse}};
-use quinn::{Connection, Endpoint, RecvStream, SendStream};
+use crate::{Error, message::{self, Message}};
+use quinn::{Connection, Endpoint};
 use rustls::{
     client::{ServerCertVerified, ServerCertVerifier},
-    Certificate, ClientConfig, RootCertStore,
+    Certificate, ClientConfig,
     KeyLogFile
 };
 
-use tracing::{debug, error, info, span, warn, Level, trace};
+use tracing::{debug, trace};
 use crate::ControlStream;
 use std::{net::SocketAddr, sync::Arc};
-use crate::message;
 
 /// Entrypoint for creating a qftp Client
 #[derive(Debug)]

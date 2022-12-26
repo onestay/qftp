@@ -61,7 +61,7 @@ fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> TokenStorag
             previous_field_ident = None;
         } else if ty.ident == "String" {
             if let Some(previous_field_ident) = previous_field_ident {
-                gen_for_str_types(field_ident, &ty.ident, previous_field_ident, &mut token_storage);
+                gen_for_str_types(field_ident, previous_field_ident, &mut token_storage);
             } else {
                 panic!("the field directly before a String has to be of numeric type");
             }
@@ -76,7 +76,6 @@ fn gen_append(fields: &Punctuated<syn::Field, syn::token::Comma>) -> TokenStorag
 
 fn gen_for_str_types(
     field_ident: &Ident,
-    type_ident: &Ident,
     previous_field_ident: &Ident,
     token_storage: &mut TokenStorage,
 ) {

@@ -3,7 +3,7 @@ use tokio::sync::Mutex;
 use quinn::Connection;
 use crate::{Error, message::Message};
 use crate::control_stream::ControlStream;
-use tracing::{trace, debug, error, info, span, warn, Level};
+use tracing::{trace, debug};
 use crate::message;
 use crate::auth::{User, AuthManager, FileStorage};
 const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
