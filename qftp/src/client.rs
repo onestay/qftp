@@ -1,4 +1,4 @@
-use crate::{Error, message::Message};
+use crate::{Error, message::{Message, LoginResponse}};
 use quinn::{Connection, Endpoint, RecvStream, SendStream};
 use rustls::{
     client::{ServerCertVerified, ServerCertVerifier},
@@ -50,7 +50,8 @@ impl Client {
         };
 
         client.negotiate_version().await?;
-
+        client.login().await?;
+        
         Ok(client)
     }
 
@@ -63,8 +64,14 @@ impl Client {
         Ok(())
     }
 
-    async fn login<'a>(&mut self, name: &'a str, password: &'a str) -> Result<(), Error> {
-        todo!()
+    async fn login<'a>(&mut self) -> Result<(), Error> {
+        let login_request_message = message::LoginRequest::new("test_user".to_string(), "123".to_string());
+        self.control_stream.send_message(login_request_message).await?;
+        match self.control_stream.recv_message::<message::LoginResponse>().await?.is_ok() {
+            true => Ok(()),
+            false => Err(Error::LoginError)
+        }
+        
     }
 }
 

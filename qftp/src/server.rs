@@ -4,7 +4,8 @@ use rustls::ServerConfig;
 use rustls::{Certificate, PrivateKey};
 use std::net::SocketAddr;
 use std::sync::Arc;
-
+use tokio::sync::Mutex;
+use crate::auth::{AuthManager, FileStorage};
 use tracing::debug;
 
 use crate::connected_client::ConnectedClient;
@@ -13,6 +14,7 @@ use crate::connected_client::ConnectedClient;
 #[derive(Debug)]
 pub struct Server {
     endpoint: Endpoint,
+    auth: Arc<Mutex<AuthManager<FileStorage>>>
 }
 
 impl Server {
@@ -39,13 +41,15 @@ impl Server {
     /// * `listen_addr` - The addr to listen on
     /// * `cert` - The certificate to present to a connecting client. Refer to [rustls](rustls::Certificate) documentation for the correct format
     /// * `priv_key` - The private key. Refer to [rustls](rustls::PrivateKey) documentation for the correct format
-    pub fn new(
+    pub async fn new(
         listen_addr: SocketAddr,
         cert: Certificate,
         priv_key: PrivateKey,
     ) -> Result<Self, Error> {
         let server = Server::create_endpoint(listen_addr, cert, priv_key)?;
-        Ok(Server { endpoint: server })
+        let auth_storage = FileStorage::new("./auth.json").await?;
+        let manager = AuthManager::new(auth_storage);
+        Ok(Server { endpoint: server, auth: Arc::new(Mutex::new(manager)) })
     }
 
     /// Accepts a connecting qftp client
@@ -54,7 +58,7 @@ impl Server {
             if let Some(connection) = self.endpoint.accept().await {
                 let connection = connection.await?;
                 debug!("accepted a new client");
-                return ConnectedClient::new(connection).await;
+                return ConnectedClient::new(connection, self.auth.clone()).await;
             }
         }
     }
@@ -83,7 +87,7 @@ mod test {
             "0.0.0.0:0".parse().expect("Failed to parse socket addr"),
             cert,
             priv_key,
-        );
+        ).await;
         assert!(server.is_ok());
     }
 
@@ -95,7 +99,7 @@ mod test {
             "0.0.0.0:0".parse().expect("Failed to parse socket addr"),
             cert,
             priv_key,
-        );
+        ).await;
         assert!(server.is_err());
     }
 }

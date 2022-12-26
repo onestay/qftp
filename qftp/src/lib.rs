@@ -29,4 +29,6 @@ pub enum Error {
     NegotiationError,
     #[error("Unknown MessageID `{0}`")]
     MessageIDError(u8),
+    #[error("The server didn't accept the credentials")]
+    LoginError
 }

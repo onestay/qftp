@@ -48,6 +48,7 @@ pub trait Storage {
     async fn get_users(&mut self) -> Result<Vec<User>, Error>;
 }
 
+#[derive(Debug)]
 pub struct FileStorage {
     file: File,
 }
@@ -89,21 +90,18 @@ impl Storage for FileStorage {
     }
 }
 
-pub struct AuthManager<'key, T: Storage + Send> {
+#[derive(Debug)]
+pub struct AuthManager<T: Storage + Send> {
     storage: T,
-    argon2: Argon2<'key>,
 }
 
-impl<'key, T: Storage + Send> AuthManager<'key, T> {
+impl<T: Storage + Send> AuthManager<T> {
     pub fn new(storage: T) -> Self {
-        AuthManager {
-            storage,
-            argon2: Argon2::default(),
-        }
+        AuthManager { storage }
     }
 }
 
-impl<'key, T: Storage + Send> AuthManager<'key, T> {
+impl<T: Storage + Send> AuthManager<T> {
     pub async fn add_user(
         &mut self,
         name: String,
@@ -113,8 +111,7 @@ impl<'key, T: Storage + Send> AuthManager<'key, T> {
     ) -> Result<(), Error> {
         let salt = SaltString::generate(&mut OsRng);
         // TODO: remove this .unwrap()
-        let password_hash = self
-            .argon2
+        let password_hash = Argon2::default()
             .hash_password(password.as_bytes(), &salt)
             .unwrap()
             .to_string();
@@ -140,8 +137,7 @@ impl<'key, T: Storage + Send> AuthManager<'key, T> {
         let saved_password = PasswordHash::new(&user.password)
             .map_err(|e| Into::<AuthError>::into(e))?;
 
-        match self
-            .argon2
+        match Argon2::default()
             .verify_password(password.as_bytes(), &saved_password)
         {
             Ok(()) => Ok(user),

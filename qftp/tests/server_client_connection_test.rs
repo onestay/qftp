@@ -27,6 +27,7 @@ mod test {
         let server = tokio::spawn(async {
             let server =
                 Server::new("127.0.0.1:2345".parse().unwrap(), cert, priv_key)
+                    .await
                     .unwrap();
             let mut connected_client = server.accept().await.unwrap();
             connected_client.shutdown().await.unwrap();

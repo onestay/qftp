@@ -3,4 +3,5 @@
 members = [
 	"qftp",
 	"qftp-derive",
+	"apps",
 ]

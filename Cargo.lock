@@ -36,6 +36,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "apps"
+version = "0.1.0"
+dependencies = [
+ "qftp",
+ "tokio",
+]
+
+[[package]]
 name = "argon2"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
