@@ -1,20 +1,22 @@
-use crate::{Error, message::{self, Message}};
-use quinn::{Connection, Endpoint};
+use crate::{Error, message::{self, Message}, distributor::{StreamRequest, self}};
+use quinn::{Connection, Endpoint, SendStream, RecvStream};
 use rustls::{
     client::{ServerCertVerified, ServerCertVerifier},
     Certificate, ClientConfig,
     KeyLogFile
 };
 
+use tokio::{sync::{oneshot::{self, Sender, Receiver}, mpsc::{self, UnboundedSender, UnboundedReceiver}}, io::AsyncReadExt};
+
 use tracing::{debug, trace};
 use crate::ControlStream;
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, collections::HashMap};
 
 /// Entrypoint for creating a qftp Client
 #[derive(Debug)]
 pub struct Client {
-    connection: Connection,
     control_stream: ControlStream,
+    recv_stream_request: UnboundedSender<StreamRequest>
 }
 
 impl Client {
@@ -42,35 +44,58 @@ impl Client {
 
         debug!("Opening control_stream");
         let control_stream = connection.open_bi().await?;
-        let control_stream = ControlStream::new(control_stream.0, control_stream.1);
-        let mut client = Client {
-            connection,
+        let mut control_stream = ControlStream::new(control_stream.0, control_stream.1);
+
+        Client::negotiate_version(&mut control_stream).await?;
+        Client::login(&mut control_stream).await?;
+        
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        let client = Client {
             control_stream,
+            recv_stream_request: tx
         };
 
-        client.negotiate_version().await?;
-        client.login().await?;
-        
+        tokio::spawn(distributor::run(connection, rx));
+
         Ok(client)
     }
 
-    async fn negotiate_version(&mut self) -> Result<(), Error> {
+
+    async fn negotiate_version(control_stream: &mut ControlStream) -> Result<u8, Error> {
         debug!("doing version negotation");
         let version = message::Version::new(&[1]);
-        self.control_stream.send_message(version).await?;
-        let response = message::VersionResponse::recv(self.control_stream.recv()).await?;
+        control_stream.send_message(version).await?;
+        let response = message::VersionResponse::recv(control_stream.recv()).await?;
         trace!("negotation response from server {:?}", response);
-        Ok(())
+        Ok(response.negotiated_version)
     }
 
-    async fn login<'a>(&mut self) -> Result<(), Error> {
+    async fn login<'a>(control_stream: &mut ControlStream) -> Result<(), Error> {
         let login_request_message = message::LoginRequest::new("test_user".to_string(), "123".to_string());
-        self.control_stream.send_message(login_request_message).await?;
-        match self.control_stream.recv_message::<message::LoginResponse>().await?.is_ok() {
+        control_stream.send_message(login_request_message).await?;
+        match control_stream.recv_message::<message::LoginResponse>().await?.is_ok() {
             true => Ok(()),
             false => Err(Error::LoginError)
         }
-        
+    }
+
+
+}
+
+impl Client {
+    pub async fn list_files(&mut self) -> Result<Vec<message::ListFileResponse>, Error>{
+        let list_files_request = message::ListFilesRequest::new("/".to_string());
+        let request_id = list_files_request.request_id();
+        self.control_stream.send_message(list_files_request).await?;
+        let (tx, rx) = oneshot::channel();
+        let req = StreamRequest::new(1, request_id, tx);
+        trace!("sending recv_stream_request");
+        self.recv_stream_request.send(req).unwrap();
+        trace!("got the streams!");
+        let _ = rx.await.unwrap();
+
+        Ok(vec![])
     }
 }
 

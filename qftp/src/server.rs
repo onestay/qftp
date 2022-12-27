@@ -62,6 +62,22 @@ impl Server {
             }
         }
     }
+
+    pub async fn process_message(&self) {
+        // recieve the header for the request
+    }
+
+    pub async fn process_list_files(&self) {
+        // collect files create vec, struct and all that stuff
+
+        // 1: open new stream
+
+        // 2: send the ListFileResponseHeader with correct request_id
+
+        // 3: send the ListFileResponse
+    }
+
+
 }
 
 #[cfg(test)]

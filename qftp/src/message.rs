@@ -1,4 +1,7 @@
-use std::fmt::Debug;
+use std::{
+    fmt::{self, Debug},
+    time::{Duration, SystemTime},
+};
 
 use qftp_derive::Message;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -50,15 +53,13 @@ pub enum MessageType {
     Login,
     LoginResponse,
     InvalidMessage,
+    ListFilesRequest
 }
 
 impl From<u8> for MessageType {
     fn from(value: u8) -> Self {
         match value {
-            0x00 => Self::Version,
-            0x01 => Self::VersionResponse,
-            0x02 => Self::Login,
-            0x03 => Self::LoginResponse,
+            0x01 => Self::ListFilesRequest,
             _ => Self::InvalidMessage,
         }
     }
@@ -85,12 +86,14 @@ impl Version {
 
 #[derive(Message, Debug)]
 pub struct VersionResponse {
-    negotiated_version: u8,
+    pub negotiated_version: u8,
 }
 
 impl VersionResponse {
     pub fn new(version: u8) -> Self {
-        VersionResponse { negotiated_version: version }
+        VersionResponse {
+            negotiated_version: version,
+        }
     }
 }
 
@@ -99,19 +102,24 @@ pub struct LoginRequest {
     name_length: u8,
     name: String,
     password_length: u8,
-    password: String
+    password: String,
 }
 
 impl LoginRequest {
     /// Create a new LoginRequest
-    /// 
+    ///
     /// # Panic
     /// This function panics if the length of name or password is longer than u8::MAX
     pub fn new(name: String, password: String) -> Self {
         if name.len() > u8::MAX.into() || password.len() > u8::MAX.into() {
             panic!("`name` or `password` are longer than {}", u8::MAX);
         }
-        LoginRequest { name_length: name.len() as u8, name, password_length: password.len() as u8, password }
+        LoginRequest {
+            name_length: name.len() as u8,
+            name,
+            password_length: password.len() as u8,
+            password,
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -126,7 +134,7 @@ impl LoginRequest {
 /// Response to the [LoginRequest](crate::message::LoginRequest)
 #[derive(Message, Debug)]
 pub struct LoginResponse {
-    status: u8
+    status: u8,
 }
 
 impl LoginResponse {
@@ -135,10 +143,95 @@ impl LoginResponse {
     }
 
     pub fn new(is_ok: bool) -> Self {
-        LoginResponse { status: is_ok as u8 }
+        LoginResponse {
+            status: is_ok as u8,
+        }
     }
 }
 
+#[derive(Debug, Message)]
+pub struct ListFilesRequest {
+    id: u8,
+    path_len: u32,
+    path: String,
+    request_id: u32,
+}
+
+impl ListFilesRequest {
+    pub(crate) fn new(path: String) -> ListFilesRequest {
+        ListFilesRequest {
+            id: 0x01,
+            path_len: path.len() as u32,
+            path,
+            request_id: 1325,
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn request_id(&self) -> u32 {
+        self.request_id
+    }
+}
+
+#[derive(Debug, Message)]
+pub struct ListFileResponseHeader {
+    num_files: u32,
+}
+
+impl ListFileResponseHeader {
+    pub fn num_files(&self) -> u32 {
+        self.num_files
+    }
+}
+
+#[derive(Debug, Message)]
+pub struct ListFileResponse {
+    file_name_length: u32,
+    file_name: String,
+    file_len: u64,
+    accessed: u128,
+    created: u128,
+    modified: u128,
+}
+
+impl fmt::Display for ListFileResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}\n\tSize: {} bytes\n\tAccessed: {:?}\n\tCreated: {:?}\n\tModified: {:?}", 
+        self.file_name, self.file_len, self.accessed(), self.created(), self.modified())
+    }
+}
+
+impl ListFileResponse {
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> u64 {
+        self.file_len
+    }
+
+    pub fn accessed(&self) -> SystemTime {
+        let duration = Duration::from_millis(self.accessed as u64);
+
+        SystemTime::UNIX_EPOCH + duration
+    }
+
+    pub fn created(&self) -> SystemTime {
+        let duration = Duration::from_millis(self.created as u64);
+
+        SystemTime::UNIX_EPOCH + duration
+    }
+
+    pub fn modified(&self) -> SystemTime {
+        let duration = Duration::from_millis(self.modified as u64);
+
+        SystemTime::UNIX_EPOCH + duration
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -159,9 +252,12 @@ mod test {
             name_length: 5,
             name: "12345".to_string(),
             password_length: 2,
-            password: "ab".to_string()
+            password: "ab".to_string(),
         };
 
-        assert_eq!([0, 5, 0x31, 0x32, 0x33,0x34, 0x35, 0, 2, 0x61, 0x62], login.to_bytes().as_slice());
+        assert_eq!(
+            [0, 5, 0x31, 0x32, 0x33, 0x34, 0x35, 0, 2, 0x61, 0x62],
+            login.to_bytes().as_slice()
+        );
     }
 }

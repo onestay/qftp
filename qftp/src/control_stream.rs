@@ -2,7 +2,8 @@ use quinn::{SendStream, RecvStream};
 use tracing::trace;
 use crate::Error;
 use crate::message::{self, Message};
-
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use paste::paste;
 #[derive(Debug)]
 enum State {
     Start,
@@ -64,22 +65,27 @@ impl ControlStream {
         Ok(())
     }
 
-    // Not really the biggest fan of the dynamic dispatch but not sure what else could be done here
-    pub async fn recv_messages(&mut self) -> Result<Box<dyn Message>, Error> {
-        let header = message::Header::recv(&mut self.recv).await?;
-        for id in header.message_ids() {
-            match id {
-                _ => todo!()
-            }
-        }
-        todo!()
-    }
+    
 
     pub async fn recv_message<T: Message + Send>(&mut self) -> Result<T, Error> {
-        T::recv(self.recv()).await
+        trace!("recieving message {:?}", std::any::type_name::<T>());
+        let result = T::recv(self.recv()).await?;
+        trace!("recieved {:?}", result);
+
+        Ok(result)
     }
 
-    //add_read!{ u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64 }
-    //add_write!{ u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64 }
+    pub async fn next_message_id(&mut self) -> Result<message::MessageType, Error> {
+        let id = self.read_u8().await?;
+        match id.into() {
+            message::MessageType::InvalidMessage => {
+                Err(Error::MessageIDError(id))
+            },
+            message_type => Ok(message_type)
+        }
+    }
+
+    add_read!{ u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64 }
+    add_write!{ u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64 }
 }
 

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use quinn::Connection;
 use crate::{Error, message::Message};
@@ -25,7 +26,13 @@ impl ConnectedClient {
 
         connected_client.negotiate_version().await?;
         connected_client.user = Some(connected_client.login(auth_manager).await?);
-
+        let list_file_request = message::ListFilesRequest::recv(connected_client.control_stream.recv()).await?;
+        trace!("got request {list_file_request:#?}");
+        trace!("opening new uni stream");
+        let mut uni = connected_client.connection.open_uni().await?;
+        trace!("opened new uni stream. Sending request_id");
+        uni.write_u32(list_file_request.request_id()).await?;
+        trace!("wrote the request id");
         Ok(connected_client)
     }
 

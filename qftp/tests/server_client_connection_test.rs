@@ -35,9 +35,10 @@ mod test {
 
         let client = tokio::spawn(async {
             std::env::set_var("SSLKEYLOGFILE", "client.keylog");
-            let _ = Client::new("127.0.0.1:2345".parse().unwrap())
+            let mut client = Client::new("127.0.0.1:2345".parse().unwrap())
                 .await
                 .unwrap();
+            let result = client.list_files().await.unwrap();
         });
 
         futures::future::join_all(vec![server, client]).await;

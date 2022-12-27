@@ -4,6 +4,7 @@ mod client;
 pub mod connected_client;
 pub mod message;
 pub mod auth;
+mod distributor;
 mod control_stream;
 pub use control_stream::ControlStream;
 pub use server::Server;
