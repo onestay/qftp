@@ -6,6 +6,7 @@ pub mod message;
 pub mod auth;
 mod distributor;
 mod control_stream;
+pub mod files;
 pub use control_stream::ControlStream;
 pub use server::Server;
 pub use client::Client;
@@ -31,5 +32,7 @@ pub enum Error {
     #[error("Unknown MessageID `{0}`")]
     MessageIDError(u8),
     #[error("The server didn't accept the credentials")]
-    LoginError
+    LoginError,
+    #[error("file error")]
+    FileError(#[from] crate::files::FileError)
 }
