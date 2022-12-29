@@ -16,11 +16,14 @@ fn read_test_certs() -> (Certificate, PrivateKey) {
 mod test {
     use qftp::{Client, Server};
     use tracing::Level;
+    use tracing_subscriber::filter::EnvFilter;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn successful_server_client_connection() {
+        let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("qftp=trace"));
         tracing_subscriber::fmt()
             .with_max_level(Level::TRACE)
+            .with_env_filter(env_filter)
             .init();
 
         let (cert, priv_key) = super::read_test_certs();
@@ -30,6 +33,7 @@ mod test {
                     .await
                     .unwrap();
             let mut connected_client = server.accept().await.unwrap();
+            connected_client.next_request().await.expect("next request returnd err");
             connected_client.shutdown().await.unwrap();
         });
 
@@ -39,6 +43,8 @@ mod test {
                 .await
                 .unwrap();
             let result = client.list_files().await.unwrap();
+
+            println!("{result:#?}")
         });
 
         futures::future::join_all(vec![server, client]).await;

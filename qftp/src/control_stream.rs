@@ -4,15 +4,6 @@ use crate::Error;
 use crate::message::{self, Message};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use paste::paste;
-#[derive(Debug)]
-enum State {
-    Start,
-    VersionNegotationDone,
-    Unauthenticated,
-    Authenciated,
-    RecvHeader,
-    RecvMessage,
-}
 
 macro_rules! add_read {
     ($($t:ty)*) => ($(
@@ -75,17 +66,5 @@ impl ControlStream {
         Ok(result)
     }
 
-    pub async fn next_message_id(&mut self) -> Result<message::MessageType, Error> {
-        let id = self.read_u8().await?;
-        match id.into() {
-            message::MessageType::InvalidMessage => {
-                Err(Error::MessageIDError(id))
-            },
-            message_type => Ok(message_type)
-        }
-    }
-
-    add_read!{ u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64 }
-    add_write!{ u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64 }
 }
 

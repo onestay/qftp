@@ -6,7 +6,7 @@ use rustls::{
     KeyLogFile
 };
 
-use tokio::{sync::{oneshot::{self, Sender, Receiver}, mpsc::{self, UnboundedSender, UnboundedReceiver}}, io::AsyncReadExt};
+use tokio::{sync::{oneshot::{self, Sender, Receiver}, mpsc::{self, UnboundedSender, UnboundedReceiver}}, io::{AsyncReadExt, AsyncWriteExt}};
 
 use tracing::{debug, trace};
 use crate::ControlStream;
@@ -88,6 +88,8 @@ impl Client {
         let list_files_request = message::ListFilesRequest::new("/".to_string());
 
         let request_id = list_files_request.request_id();
+        trace!("sending request number");
+        self.control_stream.send().write_u16(0x01).await?;
         self.control_stream.send_message(list_files_request).await?;
         let (tx, rx) = oneshot::channel();
         let req = StreamRequest::new(1, request_id, tx);
@@ -105,7 +107,6 @@ impl Client {
             let file = message::ListFileResponse::recv(uni).await?;
             response.push(file);
         }
-        println!("{response:#?}");
 
         Ok(response)
     }

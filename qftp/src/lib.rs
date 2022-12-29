@@ -30,7 +30,7 @@ pub enum Error {
     #[error("Version negotiation failed")]
     NegotiationError,
     #[error("Unknown MessageID `{0}`")]
-    MessageIDError(u8),
+    MessageIDError(u16),
     #[error("The server didn't accept the credentials")]
     LoginError,
     #[error("file error")]

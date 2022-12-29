@@ -1,12 +1,12 @@
 use std::{
     fmt::{self, Debug},
     fs::Metadata,
+    os::unix::fs::MetadataExt,
     time::{Duration, SystemTime},
-    os::unix::fs::MetadataExt
 };
 
 use qftp_derive::Message;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, AsyncReadExt};
 
 use crate::Error;
 
@@ -30,39 +30,27 @@ pub trait Message: Debug + Send {
     }
 }
 
-#[derive(Message, Debug)]
-pub struct Header {
-    len: u8,
-    message_ids: Vec<u8>,
+pub(crate) enum Request {
+    ListFileRequest(ListFilesRequest),
 }
 
-impl Header {
-    pub fn len(&self) -> u8 {
-        self.len
-    }
+impl Request {
+    pub(crate) async fn next_request<T>(reader: &mut T) -> Result<Self, Error>
+    where
+        Self: Sized,
+        T: Sync + Send + Unpin + AsyncRead,
+    {
+        let request_id = reader.read_u16().await?;
+        match request_id {
+            0x1 => {
+                let request = ListFilesRequest::recv(reader).await?;
 
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn message_ids(&self) -> Vec<MessageType> {
-        self.message_ids.iter().map(|id| (*id).into()).collect()
-    }
-}
-pub enum MessageType {
-    Version,
-    VersionResponse,
-    Login,
-    LoginResponse,
-    InvalidMessage,
-    ListFilesRequest,
-}
-
-impl From<u8> for MessageType {
-    fn from(value: u8) -> Self {
-        match value {
-            0x01 => Self::ListFilesRequest,
-            _ => Self::InvalidMessage,
+                Ok(Self::ListFileRequest(request))
+            },
+            id => {
+                Err(Error::MessageIDError(id))
+            }
+            
         }
     }
 }
@@ -153,7 +141,6 @@ impl LoginResponse {
 
 #[derive(Debug, Message)]
 pub struct ListFilesRequest {
-    id: u8,
     path_len: u32,
     path: String,
     request_id: u32,
@@ -162,7 +149,6 @@ pub struct ListFilesRequest {
 impl ListFilesRequest {
     pub(crate) fn new(path: String) -> ListFilesRequest {
         ListFilesRequest {
-            id: 0x01,
             path_len: path.len() as u32,
             path,
             request_id: 1325,
@@ -197,7 +183,7 @@ pub struct ListFileResponse {
     accessed: i64,
     created: i64,
     modified: i64,
-    mode: u32
+    mode: u32,
 }
 
 impl fmt::Display for ListFileResponse {
@@ -217,7 +203,7 @@ impl ListFileResponse {
             accessed: metadata.atime(),
             created: metadata.ctime(),
             modified: metadata.mtime(),
-            mode: metadata.mode()
+            mode: metadata.mode(),
         }
     }
 
