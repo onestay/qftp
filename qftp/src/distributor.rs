@@ -97,7 +97,8 @@ async fn handle_stream(request_id: u32, recv: RecvStream, messages: &mut HashMap
         buf.push(recv);
     } else {
         trace!("couldn't find a request with id {request_id}, creating new entry in buffer");
-        recv_stream_buffer.insert(request_id, vec![recv]);
+        let res = recv_stream_buffer.insert(request_id, vec![recv]);
+        assert!(res.is_none());
     }
     
     None
