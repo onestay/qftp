@@ -5,3 +5,6 @@ members = [
 	"qftp-derive",
 	"apps",
 ]
+
+[profile.dev.package.backtrace]
+opt-level = 3

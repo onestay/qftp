@@ -3,22 +3,22 @@ use crate::{
     message::{self, Message},
     Error,
 };
-use quinn::{Connection, Endpoint, RecvStream, SendStream};
+use quinn::Endpoint;
 use rustls::{
     client::{ServerCertVerified, ServerCertVerifier},
     Certificate, ClientConfig, KeyLogFile,
 };
 
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncWriteExt,
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
-        oneshot::{self, Receiver, Sender},
+        mpsc::{self, UnboundedSender},
+        oneshot,
     },
 };
 
 use crate::ControlStream;
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 use tracing::{debug, trace};
 
 /// Entrypoint for creating a qftp Client

@@ -1,31 +1,30 @@
-use crate::message::{self, Message};
+use crate::message::Message;
 use crate::Error;
-use paste::paste;
 use quinn::{RecvStream, SendStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::trace;
 
-macro_rules! add_read {
-    ($($t:ty)*) => ($(
-        paste! {
-            pub(crate) async fn [<read_ $t>](&mut self) -> Result<$t, crate::Error> {
-                let n = self.recv.[<read_ $t>]().await?;
-                Ok(n)
-            }
-        }
-    )*)
-}
+// these macros are currently unused, but maybe I'll use them at some point
+// macro_rules! add_read {
+//     ($($t:ty)*) => ($(
+//         paste! {
+//             pub(crate) async fn [<read_ $t>](&mut self) -> Result<$t, crate::Error> {
+//                 let n = self.recv.[<read_ $t>]().await?;
+//                 Ok(n)
+//             }
+//         }
+//     )*)
+// }
 
-macro_rules! add_write {
-    ($($t:ty)*) => ($(
-        paste! {
-            pub(crate) async fn [<write_ $t>](&mut self, n: $t) -> Result<(), crate::Error> {
-                self.send.[<write_ $t>](n).await?;
-                Ok(())
-            }
-        }
-    )*)
-}
+// macro_rules! add_write {
+//     ($($t:ty)*) => ($(
+//         paste! {
+//             pub(crate) async fn [<write_ $t>](&mut self, n: $t) -> Result<(), crate::Error> {
+//                 self.send.[<write_ $t>](n).await?;
+//                 Ok(())
+//             }
+//         }
+//     )*)
+// }
 
 /// The ControlStream struct exchanges control messages between the Server and a Client
 // TODO: Maybe make send and recv generic with AsyncRead and AsyncWrite
