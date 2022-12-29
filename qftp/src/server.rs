@@ -66,7 +66,12 @@ impl Server {
             if let Some(connection) = self.endpoint.accept().await {
                 let connection = connection.await?;
                 debug!("accepted a new client");
-                return ConnectedClient::new(connection, self.auth.clone(), self.file_manager.clone()).await;
+                return ConnectedClient::new(
+                    connection,
+                    self.auth.clone(),
+                    self.file_manager.clone(),
+                )
+                .await;
             }
         }
     }

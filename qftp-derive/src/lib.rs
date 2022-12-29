@@ -81,7 +81,7 @@ fn gen_for_str_types(
 ) {
     let token_to_bytes = quote!(v.extend_from_slice(&self.#field_ident.as_bytes()));
     let token_recv = quote! {
-        let mut buf: Vec<u8> = vec![0; #previous_field_ident.try_into().unwrap()];  
+        let mut buf: Vec<u8> = vec![0; #previous_field_ident.try_into().unwrap()];
         s.read_exact(&mut buf[..]).await?;
         let #field_ident = String::from_utf8(buf).unwrap();
     };

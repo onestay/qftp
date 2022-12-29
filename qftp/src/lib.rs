@@ -1,15 +1,15 @@
 use thiserror::Error;
-mod server;
+pub mod auth;
 mod client;
 pub mod connected_client;
-pub mod message;
-pub mod auth;
-mod distributor;
 mod control_stream;
+mod distributor;
 pub mod files;
+pub mod message;
+mod server;
+pub use client::Client;
 pub use control_stream::ControlStream;
 pub use server::Server;
-pub use client::Client;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -38,5 +38,5 @@ pub enum Error {
     #[error("error sending message from request to channel distributor")]
     RequestDistributorChannelSendError,
     #[error("error")]
-    RecvErrorOneshot(#[from] tokio::sync::oneshot::error::RecvError)
+    RecvErrorOneshot(#[from] tokio::sync::oneshot::error::RecvError),
 }

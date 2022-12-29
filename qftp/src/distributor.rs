@@ -1,10 +1,13 @@
 use crate::Error;
 use quinn::{Connection, RecvStream};
 
-use tokio::{sync::{oneshot::Sender, mpsc::UnboundedReceiver}, io::AsyncReadExt};
+use tokio::{
+    io::AsyncReadExt,
+    sync::{mpsc::UnboundedReceiver, oneshot::Sender},
+};
 
-use tracing::{debug, trace};
 use std::collections::HashMap;
+use tracing::{debug, trace};
 
 #[derive(Debug)]
 pub(crate) struct StreamRequest {
@@ -15,10 +18,19 @@ pub(crate) struct StreamRequest {
 }
 
 impl StreamRequest {
-    pub(crate) fn new(num_streams: u16, request_id: u32, sender: Sender<Vec<RecvStream>>) -> Self {
+    pub(crate) fn new(
+        num_streams: u16,
+        request_id: u32,
+        sender: Sender<Vec<RecvStream>>,
+    ) -> Self {
         let response = Vec::with_capacity(num_streams as usize);
-        
-        StreamRequest { num_streams, request_id, response, response_sender: sender }
+
+        StreamRequest {
+            num_streams,
+            request_id,
+            response,
+            response_sender: sender,
+        }
     }
 
     pub(crate) fn is_done(&self) -> bool {
@@ -26,14 +38,17 @@ impl StreamRequest {
     }
 }
 
-pub(crate) async fn run(connection: Connection, mut channel: UnboundedReceiver<StreamRequest>) {
+pub(crate) async fn run(
+    connection: Connection,
+    mut channel: UnboundedReceiver<StreamRequest>,
+) {
     trace!("starting the stream distributor");
     let mut messages = HashMap::new();
     let mut recv_stream_buffer = HashMap::new();
 
     // create a loop with a tokio::select! inside that checks connection.accept_{uni,bi} and channel.recv()
     loop {
-        tokio::select! {        
+        tokio::select! {
             s = connection.accept_uni() => {
                 let mut s = s.unwrap();
                 let request_id = read_request_id(&mut s).await.unwrap();
@@ -66,7 +81,11 @@ async fn read_request_id(recv_stream: &mut RecvStream) -> Result<u32, Error> {
     Ok(request_id)
 }
 
-async fn check_buffer(request_id: u32, messages: &mut HashMap<u32, StreamRequest>, recv_stream_buffer: &mut HashMap<u32, Vec<RecvStream>>) {
+async fn check_buffer(
+    request_id: u32,
+    messages: &mut HashMap<u32, StreamRequest>,
+    recv_stream_buffer: &mut HashMap<u32, Vec<RecvStream>>,
+) {
     // first check if we have the message
     trace!("checking if we recieved request {request_id}");
     if let Some(message) = messages.get_mut(&request_id) {
@@ -82,8 +101,12 @@ async fn check_buffer(request_id: u32, messages: &mut HashMap<u32, StreamRequest
     }
 }
 
-async fn handle_stream(request_id: u32, recv: RecvStream, messages: &mut HashMap<u32, StreamRequest>, recv_stream_buffer: &mut HashMap<u32, Vec<RecvStream>>) -> Option<StreamRequest> {
-    
+async fn handle_stream(
+    request_id: u32,
+    recv: RecvStream,
+    messages: &mut HashMap<u32, StreamRequest>,
+    recv_stream_buffer: &mut HashMap<u32, Vec<RecvStream>>,
+) -> Option<StreamRequest> {
     trace!("read request_id {request_id} from the stream");
     if let Some(request) = messages.get_mut(&request_id) {
         trace!("found already existing request with {request_id}");
@@ -100,6 +123,6 @@ async fn handle_stream(request_id: u32, recv: RecvStream, messages: &mut HashMap
         let res = recv_stream_buffer.insert(request_id, vec![recv]);
         assert!(res.is_none());
     }
-    
+
     None
 }

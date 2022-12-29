@@ -6,7 +6,7 @@ use std::{
 };
 
 use qftp_derive::Message;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, AsyncReadExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::Error;
 
@@ -46,11 +46,8 @@ impl Request {
                 let request = ListFilesRequest::recv(reader).await?;
 
                 Ok(Self::ListFileRequest(request))
-            },
-            id => {
-                Err(Error::MessageIDError(id))
             }
-            
+            id => Err(Error::MessageIDError(id)),
         }
     }
 }
@@ -258,7 +255,7 @@ mod test {
         };
 
         assert_eq!(
-            [5, 0x31, 0x32, 0x33, 0x34, 0x35, 0, 2, 0x61, 0x62],
+            [5, 0x31, 0x32, 0x33, 0x34, 0x35, 2, 0x61, 0x62],
             login.to_bytes().as_slice()
         );
     }

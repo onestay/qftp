@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use color_eyre::eyre::Result;
 use quinn::Endpoint;
-use rustls::{Certificate, ClientConfig, RootCertStore};
 use rustls::client::{ServerCertVerified, ServerCertVerifier};
+use rustls::{Certificate, ClientConfig, RootCertStore};
 struct DontVerify;
 
 impl ServerCertVerifier for DontVerify {
@@ -30,13 +30,17 @@ async fn main() -> Result<()> {
     for cert in rustls_native_certs::load_native_certs()? {
         root_store.add(&Certificate(cert.0))?;
     }
-    
+
     let mut client_config = ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(root_store)
         .with_no_client_auth();
-    client_config.dangerous().set_certificate_verifier(Arc::new(DontVerify{}));
-    client.set_default_client_config(quinn::ClientConfig::new(Arc::new(client_config)));
+    client_config
+        .dangerous()
+        .set_certificate_verifier(Arc::new(DontVerify {}));
+    client.set_default_client_config(quinn::ClientConfig::new(Arc::new(
+        client_config,
+    )));
     let connecting = client
         .connect("127.0.0.1:3578".parse()?, "miu.local")?
         .await?;

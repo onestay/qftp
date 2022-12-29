@@ -1,9 +1,9 @@
-use quinn::{SendStream, RecvStream};
-use tracing::trace;
-use crate::Error;
 use crate::message::{self, Message};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use crate::Error;
 use paste::paste;
+use quinn::{RecvStream, SendStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::trace;
 
 macro_rules! add_read {
     ($($t:ty)*) => ($(
@@ -38,7 +38,7 @@ pub struct ControlStream {
 impl ControlStream {
     pub(crate) fn new(send: SendStream, recv: RecvStream) -> Self {
         trace!("creating new ControlStream");
-        
+
         ControlStream { send, recv }
     }
 
@@ -50,13 +50,14 @@ impl ControlStream {
         &mut self.send
     }
 
-    pub async fn send_message<T: Message + Send>(&mut self, message: T) -> Result<(), Error> {
+    pub async fn send_message<T: Message + Send>(
+        &mut self,
+        message: T,
+    ) -> Result<(), Error> {
         trace!("sending message: {:?}", message);
         message.send(&mut self.send).await?;
         Ok(())
     }
-
-    
 
     pub async fn recv_message<T: Message + Send>(&mut self) -> Result<T, Error> {
         trace!("recieving message {:?}", std::any::type_name::<T>());
@@ -65,6 +66,4 @@ impl ControlStream {
 
         Ok(result)
     }
-
 }
-
