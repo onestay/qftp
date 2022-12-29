@@ -86,16 +86,28 @@ impl Client {
 impl Client {
     pub async fn list_files(&mut self) -> Result<Vec<message::ListFileResponse>, Error>{
         let list_files_request = message::ListFilesRequest::new("/".to_string());
+
         let request_id = list_files_request.request_id();
         self.control_stream.send_message(list_files_request).await?;
         let (tx, rx) = oneshot::channel();
         let req = StreamRequest::new(1, request_id, tx);
         trace!("sending recv_stream_request");
-        self.recv_stream_request.send(req).unwrap();
+        self.recv_stream_request.send(req).map_err(|_| Error::RequestDistributorChannelSendError)?;
         trace!("got the streams!");
-        let _ = rx.await.unwrap();
+        let mut streams = rx.await?;
+        assert!(streams.len() == 1);
 
-        Ok(vec![])
+        let uni = &mut streams[0];
+        let header = message::ListFileResponseHeader::recv(uni).await?;
+        
+        let mut response = Vec::with_capacity(header.num_files as usize);
+        for _ in 0..header.num_files {
+            let file = message::ListFileResponse::recv(uni).await?;
+            response.push(file);
+        }
+        println!("{response:#?}");
+
+        Ok(response)
     }
 }
 

@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use quinn::Connection;
+use crate::files::FileManager;
 use crate::{Error, message::Message};
 use crate::control_stream::ControlStream;
 use tracing::{trace, debug};
@@ -13,16 +14,17 @@ const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
 pub struct ConnectedClient {
     connection: Connection,
     control_stream: ControlStream,
-    user: Option<User>
+    user: Option<User>,
+    file_manager: Arc<FileManager>
 }
 
 impl ConnectedClient {
-    pub(crate) async fn new(connection: Connection, auth_manager: Arc<Mutex<AuthManager<FileStorage>>>) -> Result<Self, Error> {
+    pub(crate) async fn new(connection: Connection, auth_manager: Arc<Mutex<AuthManager<FileStorage>>>, file_manager: Arc<FileManager>) -> Result<Self, Error> {
         trace!("creating new ConnectedClient");
         let control_stream = connection.accept_bi().await?;
         trace!("accepted the control_stream");
         let control_stream = ControlStream::new(control_stream.0, control_stream.1);
-        let mut connected_client = ConnectedClient { connection, control_stream, user: None };
+        let mut connected_client = ConnectedClient { connection, control_stream, user: None, file_manager};
 
         connected_client.negotiate_version().await?;
         connected_client.user = Some(connected_client.login(auth_manager).await?);
@@ -32,6 +34,12 @@ impl ConnectedClient {
         let mut uni = connected_client.connection.open_uni().await?;
         trace!("opened new uni stream. Sending request_id");
         uni.write_u32(list_file_request.request_id()).await?;
+        let files = connected_client.file_manager.walk_dir(None::<&str>).await.unwrap();
+        let msg = message::ListFileResponseHeader { num_files: files.len() as u32 };
+        msg.send(&mut uni).await?;
+        for file in files {
+            file.send(&mut uni).await?;
+        }
         trace!("wrote the request id");
         Ok(connected_client)
     }

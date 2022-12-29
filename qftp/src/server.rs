@@ -1,3 +1,4 @@
+use crate::auth::{AuthManager, FileStorage};
 use crate::Error;
 use quinn::Endpoint;
 use rustls::ServerConfig;
@@ -5,16 +6,17 @@ use rustls::{Certificate, PrivateKey};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::auth::{AuthManager, FileStorage};
 use tracing::debug;
 
 use crate::connected_client::ConnectedClient;
+use crate::files::FileManager;
 
 /// Entrypoint for creating a qftp Server
 #[derive(Debug)]
 pub struct Server {
     endpoint: Endpoint,
-    auth: Arc<Mutex<AuthManager<FileStorage>>>
+    auth: Arc<Mutex<AuthManager<FileStorage>>>,
+    file_manager: Arc<FileManager>,
 }
 
 impl Server {
@@ -33,7 +35,6 @@ impl Server {
         Ok(server)
     }
 
-    
     /// Creates a new `Server` listening on the given addr
     ///
     /// # Arguments
@@ -49,7 +50,14 @@ impl Server {
         let server = Server::create_endpoint(listen_addr, cert, priv_key)?;
         let auth_storage = FileStorage::new("./auth.json").await?;
         let manager = AuthManager::new(auth_storage);
-        Ok(Server { endpoint: server, auth: Arc::new(Mutex::new(manager)) })
+        let file_manager =
+            FileManager::new("/Users/marius/Documents/dev/rust/qftp/qftp")
+                .unwrap();
+        Ok(Server {
+            endpoint: server,
+            auth: Arc::new(Mutex::new(manager)),
+            file_manager: Arc::new(file_manager),
+        })
     }
 
     /// Accepts a connecting qftp client
@@ -58,7 +66,7 @@ impl Server {
             if let Some(connection) = self.endpoint.accept().await {
                 let connection = connection.await?;
                 debug!("accepted a new client");
-                return ConnectedClient::new(connection, self.auth.clone()).await;
+                return ConnectedClient::new(connection, self.auth.clone(), self.file_manager.clone()).await;
             }
         }
     }
@@ -76,8 +84,6 @@ impl Server {
 
         // 3: send the ListFileResponse
     }
-
-
 }
 
 #[cfg(test)]
@@ -103,7 +109,8 @@ mod test {
             "0.0.0.0:0".parse().expect("Failed to parse socket addr"),
             cert,
             priv_key,
-        ).await;
+        )
+        .await;
         assert!(server.is_ok());
     }
 
@@ -115,7 +122,8 @@ mod test {
             "0.0.0.0:0".parse().expect("Failed to parse socket addr"),
             cert,
             priv_key,
-        ).await;
+        )
+        .await;
         assert!(server.is_err());
     }
 }

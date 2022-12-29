@@ -34,5 +34,9 @@ pub enum Error {
     #[error("The server didn't accept the credentials")]
     LoginError,
     #[error("file error")]
-    FileError(#[from] crate::files::FileError)
+    FileError(#[from] crate::files::FileError),
+    #[error("error sending message from request to channel distributor")]
+    RequestDistributorChannelSendError,
+    #[error("error")]
+    RecvErrorOneshot(#[from] tokio::sync::oneshot::error::RecvError)
 }

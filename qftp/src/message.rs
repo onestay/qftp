@@ -1,6 +1,8 @@
 use std::{
     fmt::{self, Debug},
+    fs::Metadata,
     time::{Duration, SystemTime},
+    os::unix::fs::MetadataExt
 };
 
 use qftp_derive::Message;
@@ -53,7 +55,7 @@ pub enum MessageType {
     Login,
     LoginResponse,
     InvalidMessage,
-    ListFilesRequest
+    ListFilesRequest,
 }
 
 impl From<u8> for MessageType {
@@ -178,7 +180,7 @@ impl ListFilesRequest {
 
 #[derive(Debug, Message)]
 pub struct ListFileResponseHeader {
-    num_files: u32,
+    pub num_files: u32,
 }
 
 impl ListFileResponseHeader {
@@ -192,9 +194,10 @@ pub struct ListFileResponse {
     file_name_length: u32,
     file_name: String,
     file_len: u64,
-    accessed: u128,
-    created: u128,
-    modified: u128,
+    accessed: i64,
+    created: i64,
+    modified: i64,
+    mode: u32
 }
 
 impl fmt::Display for ListFileResponse {
@@ -205,6 +208,19 @@ impl fmt::Display for ListFileResponse {
 }
 
 impl ListFileResponse {
+    pub fn new(file_name: impl ToString, metadata: &Metadata) -> Self {
+        let file_name = file_name.to_string();
+        ListFileResponse {
+            file_name_length: file_name.len() as u32,
+            file_name,
+            file_len: metadata.size(),
+            accessed: metadata.atime(),
+            created: metadata.ctime(),
+            modified: metadata.mtime(),
+            mode: metadata.mode()
+        }
+    }
+
     pub fn file_name(&self) -> &str {
         &self.file_name
     }
