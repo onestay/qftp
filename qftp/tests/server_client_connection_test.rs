@@ -47,7 +47,7 @@ mod test {
                 .await
                 .unwrap();
             let result = client.list_files().await.unwrap();
-
+            assert_eq!(result.len(), 3);
             println!("{result:#?}")
         });
 

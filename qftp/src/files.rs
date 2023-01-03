@@ -28,6 +28,7 @@ impl FileManager {
     pub fn new(base_path: impl AsRef<Path>) -> Result<Self, FileError> {
         let mut base_path_buf = PathBuf::new();
         base_path_buf.push(base_path);
+        base_path_buf.canonicalize()?;
         if !base_path_buf.is_dir() {
             return Err(FileError::BasePathNotADir);
         }
@@ -39,6 +40,7 @@ impl FileManager {
 
     fn walk_dir_impl(
         path: impl AsRef<Path>,
+        offset: impl AsRef<Path>,
     ) -> Result<Vec<message::ListFileResponse>, FileError> {
         let mut result = Vec::new();
         let dir = fs::read_dir(path)?;
@@ -49,9 +51,10 @@ impl FileManager {
 
             if file_type.is_dir() {
                 let mut recurse_result =
-                    FileManager::walk_dir_impl(entry.path())?;
+                    FileManager::walk_dir_impl(entry.path(), offset)?;
                 result.append(&mut recurse_result);
             } else if file_type.is_file() {
+                
                 let path = entry
                     .file_name()
                     .into_string()
@@ -68,10 +71,10 @@ impl FileManager {
 
     pub(crate) async fn walk_dir(
         &self,
-        offset: Option<impl AsRef<Path>>,
+        offset: impl AsRef<Path> + Send + 'static,
     ) -> Result<Vec<message::ListFileResponse>, FileError> {
         let mut base_path = self.base_path.clone();
-        if let Some(offset) = offset {
+        if offset.as_ref().as_os_str().len() != 0 {
             if offset.as_ref().is_absolute() {
                 return Err(FileError::PathIsAbsolute);
             }
@@ -79,7 +82,7 @@ impl FileManager {
             base_path.push(offset);
         }
         let result = tokio::task::spawn_blocking(move || {
-            FileManager::walk_dir_impl(base_path)
+            FileManager::walk_dir_impl(base_path, offset)
         })
         .await?;
 
@@ -92,10 +95,12 @@ mod test {
     use super::FileManager;
     #[tokio::test]
     async fn test_walk_dir() {
-        let f = FileManager::new("/Users/marius/Documents/dev/rust/qftp/qftp")
+        let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
+        println!("{path}");
+        let f = FileManager::new(path)
             .expect("expect creating a file manager not to fail");
         let result = f.walk_dir(None::<&str>).await.unwrap();
 
-        println!("{result:#?}")
+        assert_eq!(result.len(), 3)
     }
 }

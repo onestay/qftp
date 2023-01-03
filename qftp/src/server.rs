@@ -50,8 +50,9 @@ impl Server {
         let server = Server::create_endpoint(listen_addr, cert, priv_key)?;
         let auth_storage = FileStorage::new("./auth.json").await?;
         let manager = AuthManager::new(auth_storage);
+        let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
         let file_manager =
-            FileManager::new("/Users/marius/Documents/dev/rust/qftp/qftp")
+            FileManager::new(path)
                 .unwrap();
         Ok(Server {
             endpoint: server,
