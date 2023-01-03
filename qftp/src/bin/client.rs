@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
         client_config,
     )));
     let connecting = client
-        .connect("127.0.0.1:3578".parse()?, "miu.local")?
+        .connect("127.0.0.1:3578".parse()?, "dev.local")?
         .await?;
     let (mut send, _) = connecting.open_bi().await?;
     send.write_all("Hello World".as_bytes()).await?;

@@ -96,7 +96,7 @@ impl ConnectedClient {
         trace!("opened new uni stream. Sending request_id");
         uni.write_u32(request.request_id()).await?;
         trace!("wrote the request ID");
-        let files = self.file_manager.walk_dir(None::<&str>).await.unwrap();
+        let files = self.file_manager.walk_dir("").await.unwrap();
         let msg = message::ListFileResponseHeader {
             num_files: files.len() as u32,
         };

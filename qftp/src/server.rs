@@ -51,9 +51,7 @@ impl Server {
         let auth_storage = FileStorage::new("./auth.json").await?;
         let manager = AuthManager::new(auth_storage);
         let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
-        let file_manager =
-            FileManager::new(path)
-                .unwrap();
+        let file_manager = FileManager::new(path).unwrap();
         Ok(Server {
             endpoint: server,
             auth: Arc::new(Mutex::new(manager)),
@@ -99,10 +97,10 @@ mod test {
 
     fn read_test_certs() -> (Certificate, PrivateKey) {
         let cert =
-            fs::read("cert/miu.local.crt").expect("Failed to read certificate");
+            fs::read("cert/dev.crt.der").expect("Failed to read certificate");
         let cert = Certificate(cert);
         let priv_key =
-            fs::read("cert/miu.local.der").expect("Failed to read private key");
+            fs::read("cert/dev.key.der").expect("Failed to read private key");
         let priv_key = PrivateKey(priv_key);
 
         (cert, priv_key)

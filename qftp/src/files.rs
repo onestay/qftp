@@ -40,23 +40,24 @@ impl FileManager {
 
     fn walk_dir_impl(
         path: impl AsRef<Path>,
-        offset: impl AsRef<Path>,
-    ) -> Result<Vec<message::ListFileResponse>, FileError> {
-        let mut result = Vec::new();
+        offset: impl AsRef<Path> + Copy,
+        result: &mut Vec<message::ListFileResponse>,
+    ) -> Result<(), FileError> {
         let dir = fs::read_dir(path)?;
 
         for entry in dir {
             let entry = entry?;
             let file_type = entry.file_type()?;
-
             if file_type.is_dir() {
-                let mut recurse_result =
-                    FileManager::walk_dir_impl(entry.path(), offset)?;
-                result.append(&mut recurse_result);
+                let mut offset = offset.as_ref().to_path_buf();
+                offset.push(entry.path().iter().last().unwrap());
+                FileManager::walk_dir_impl(entry.path(), &offset, result)?;
             } else if file_type.is_file() {
-                
-                let path = entry
-                    .file_name()
+                let mut relative_path = PathBuf::new();
+                relative_path.push(offset);
+                relative_path.push(entry.file_name());
+                let path = relative_path
+                    .into_os_string()
                     .into_string()
                     .map_err(|_| FileError::OsStringConversionError)?;
                 result.push(message::ListFileResponse::new(
@@ -66,25 +67,29 @@ impl FileManager {
             }
         }
 
-        Ok(result)
+        Ok(())
     }
 
     pub(crate) async fn walk_dir(
         &self,
-        offset: impl AsRef<Path> + Send + 'static,
+        offset: impl AsRef<Path> + Send + 'static + Copy,
     ) -> Result<Vec<message::ListFileResponse>, FileError> {
         let mut base_path = self.base_path.clone();
-        if offset.as_ref().as_os_str().len() != 0 {
+        if !offset.as_ref().as_os_str().is_empty() {
             if offset.as_ref().is_absolute() {
                 return Err(FileError::PathIsAbsolute);
             }
 
             base_path.push(offset);
         }
-        let result = tokio::task::spawn_blocking(move || {
-            FileManager::walk_dir_impl(base_path, offset)
-        })
-        .await?;
+        let result: Result<Vec<message::ListFileResponse>, FileError> =
+            tokio::task::spawn_blocking(move || {
+                let mut result = Vec::new();
+                FileManager::walk_dir_impl(base_path, offset, &mut result)?;
+
+                Ok(result)
+            })
+            .await?;
 
         result
     }
@@ -99,8 +104,19 @@ mod test {
         println!("{path}");
         let f = FileManager::new(path)
             .expect("expect creating a file manager not to fail");
-        let result = f.walk_dir(None::<&str>).await.unwrap();
+        let result = f.walk_dir("").await.unwrap();
 
-        assert_eq!(result.len(), 3)
+        assert_eq!(result.len(), 4)
+    }
+
+    #[tokio::test]
+    async fn test_walk_dir_with_offset() {
+        let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
+        println!("{path}");
+        let f = FileManager::new(path)
+            .expect("expect creating a file manager not to fail");
+        let result = f.walk_dir("b").await.unwrap();
+
+        assert_eq!(result.len(), 2)
     }
 }
