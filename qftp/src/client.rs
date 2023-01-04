@@ -6,7 +6,7 @@ use crate::{
 use quinn::Endpoint;
 use rustls::{
     client::{ServerCertVerified, ServerCertVerifier},
-    Certificate, ClientConfig, KeyLogFile,
+    Certificate, ClientConfig, KeyLogFile, RootCertStore,
 };
 
 use tokio::{
@@ -18,8 +18,128 @@ use tokio::{
 };
 
 use crate::ControlStream;
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 use tracing::{debug, trace};
+
+/// A simple wrapper around [Rustls ClientConfig](rustls::ClientConfig)
+#[derive(Debug)]
+pub struct QClientConfig {
+    client_config: ClientConfig,
+}
+
+impl QClientConfig {
+    /// Creates a new [QClientConfig] with the Operating Systems root cert store. Check the [rustls_native_certs](rustls_native_certs::load_native_certs) crate for more information.
+    ///
+    /// Requirers the "native-certs" feature to be enabled.
+    #[cfg(feature = "native-certs")]
+    pub fn with_native_certs() -> Self {
+        use rustls_native_certs::load_native_certs;
+        let certs = load_native_certs().expect("failed to load native certs");
+        let mut store = RootCertStore::empty();
+        for cert in certs {
+            store
+                .add(&Certificate(cert.0))
+                .expect("failed to add certificate to store")
+        }
+
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(store)
+            .with_no_client_auth();
+
+        QClientConfig {
+            client_config: config,
+        }
+    }
+
+    /// Creates a new [QClientConfig] with the specified certificates. Certificate needs to be a DER-encoded X.509 certificate as described in [Rustls](rustls::Certificate)
+    pub fn with_certs(certs: Vec<Certificate>) -> Self {
+        let mut store = RootCertStore::empty();
+        for cert in certs {
+            store
+                .add(&Certificate(cert.0))
+                .expect("failed to add certificate to store")
+        }
+
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(store)
+            .with_no_client_auth();
+
+        QClientConfig {
+            client_config: config,
+        }
+    }
+
+    /// Creates a new [QClientConfig]. This config will not verify the client certificates. This is potentially very dangerous.
+    pub fn dangerous_dont_verify() -> Self {
+        let config = ClientConfig::builder()
+            .with_safe_defaults()
+            .with_custom_certificate_verifier(Arc::new(DontVerify {}))
+            .with_no_client_auth();
+
+        QClientConfig {
+            client_config: config,
+        }
+    }
+}
+
+impl From<QClientConfig> for ClientConfig {
+    fn from(value: QClientConfig) -> Self {
+        value.client_config
+    }
+}
+
+/// Builder for a [Client]. Usually created by [Client::builder]
+#[derive(Debug)]
+pub struct ClientBuilder {
+    addr: Option<SocketAddr>,
+    server_name: Option<String>,
+    config: Option<ClientConfig>,
+}
+
+impl ClientBuilder {
+    /// Set the address to connect to.
+    /// `T` will be resolved to the first IPv4 address.
+    pub fn set_addr<T: ToSocketAddrs>(
+        mut self,
+        addr: T,
+        server_name: String,
+    ) -> Self {
+        let mut addr = addr
+            .to_socket_addrs()
+            .expect("{addr} is not a valid SocketAddress");
+        let addr = addr
+            .find(|a| matches!(a, SocketAddr::V4(..)))
+            .expect("{addr} didn't resolve to a valid IPv4 addr");
+        self.addr = Some(addr);
+        self.server_name = Some(server_name);
+
+        self
+    }
+
+    /// Set the [ClientConfig](rustls::ClientConfig). Can be constructed with [QClientConfig]
+    pub fn with_client_config(mut self, config: ClientConfig) -> Self {
+        self.config = Some(config);
+
+        self
+    }
+
+    pub async fn build(self) -> Result<Client, Error> {
+        Client::new(
+            self.addr
+                .expect("tried calling build without setting the addr"),
+            self.server_name
+                .expect("tried calling build without setting the server name"),
+            self.config
+                .expect("tried calling build without setting the client_config"),
+        )
+        .await
+    }
+}
 
 /// Entrypoint for creating a qftp Client
 #[derive(Debug)]
@@ -29,12 +149,16 @@ pub struct Client {
 }
 
 impl Client {
-    fn create_endpoint() -> Result<Endpoint, Error> {
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder {
+            addr: None,
+            server_name: None,
+            config: None,
+        }
+    }
+
+    fn create_endpoint(mut client_config: ClientConfig) -> Result<Endpoint, Error> {
         debug!("Creating client config");
-        let mut client_config = ClientConfig::builder()
-            .with_safe_defaults()
-            .with_custom_certificate_verifier(Arc::new(DontVerify {}))
-            .with_no_client_auth();
         client_config.key_log = Arc::new(KeyLogFile::new());
         debug!("Creating client");
         let mut client = Endpoint::client(
@@ -46,10 +170,15 @@ impl Client {
 
         Ok(client)
     }
-    pub async fn new(addr: SocketAddr) -> Result<Self, Error> {
-        let client = Client::create_endpoint()?;
+
+    async fn new(
+        addr: SocketAddr,
+        server_name: String,
+        client_config: ClientConfig,
+    ) -> Result<Self, Error> {
+        let client = Client::create_endpoint(client_config)?;
         debug!("Connecting to server");
-        let connection = client.connect(addr, "test.server")?.await?;
+        let connection = client.connect(addr, &server_name)?.await?;
 
         debug!("Opening control_stream");
         let control_stream = connection.open_bi().await?;

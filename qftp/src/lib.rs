@@ -1,13 +1,16 @@
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(missing_debug_implementations)]
+
 use thiserror::Error;
 pub mod auth;
 mod client;
+pub use client::{Client, ClientBuilder, QClientConfig};
 pub mod connected_client;
 mod control_stream;
 mod distributor;
 pub mod files;
 pub mod message;
 mod server;
-pub use client::Client;
 pub use control_stream::ControlStream;
 pub use server::Server;
 

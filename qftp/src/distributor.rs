@@ -51,9 +51,10 @@ pub(crate) async fn run(
         tokio::select! {
             s = connection.accept_uni() => {
                 let mut s = s.unwrap();
+                trace!("accepted new uni stream");
                 let request_id = read_request_id(&mut s).await.unwrap();
-                check_buffer(request_id, &mut messages, &mut recv_stream_buffer).await;
-                match handle_stream(request_id, s, &mut messages, &mut recv_stream_buffer).await {
+                check_buffer(request_id, &mut messages, &mut recv_stream_buffer);
+                match handle_stream(request_id, s, &mut messages, &mut recv_stream_buffer) {
                     Some(request) => {
                         request.response_sender.send(request.response).unwrap();
                     },
@@ -81,7 +82,7 @@ async fn read_request_id(recv_stream: &mut RecvStream) -> Result<u32, Error> {
     Ok(request_id)
 }
 
-async fn check_buffer(
+fn check_buffer(
     request_id: u32,
     messages: &mut HashMap<u32, StreamRequest>,
     recv_stream_buffer: &mut HashMap<u32, Vec<RecvStream>>,
@@ -101,7 +102,7 @@ async fn check_buffer(
     }
 }
 
-async fn handle_stream(
+fn handle_stream(
     request_id: u32,
     recv: RecvStream,
     messages: &mut HashMap<u32, StreamRequest>,

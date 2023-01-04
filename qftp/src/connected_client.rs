@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, trace};
 const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
 
+#[derive(Debug)]
 pub struct ConnectedClient {
     connection: Connection,
     control_stream: ControlStream,
@@ -90,8 +91,7 @@ impl ConnectedClient {
         &mut self,
         request: message::ListFilesRequest,
     ) -> Result<(), Error> {
-        trace!("got request {request:#?}");
-        trace!("opening new uni stream");
+        trace!("got request {request:#?}\nopening new uni stream");
         let mut uni = self.connection.open_uni().await?;
         trace!("opened new uni stream. Sending request_id");
         uni.write_u32(request.request_id()).await?;
