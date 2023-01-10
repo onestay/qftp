@@ -53,13 +53,13 @@ impl ControlStream {
         &mut self,
         message: T,
     ) -> Result<(), Error> {
-        trace!("sending message: {:?}", message);
+        trace!("sending message: {:#?}", message);
         message.send(&mut self.send).await?;
         Ok(())
     }
 
     pub async fn recv_message<T: Message + Send>(&mut self) -> Result<T, Error> {
-        trace!("recieving message {:?}", std::any::type_name::<T>());
+        trace!("recieving message {:#?}", std::any::type_name::<T>());
         let result = T::recv(self.recv()).await?;
         trace!("recieved {:?}", result);
 
