@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt, path::Path};
 
 use crate::Error;
 use serde::{Deserialize, Serialize};
@@ -152,7 +152,7 @@ impl<T: Storage + Send> AuthManager<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct User {
     name: String,
     password: String,
@@ -160,6 +160,18 @@ pub struct User {
     // currently the whole auth system only works on unix
     uid: u32,
     gid: Vec<u32>,
+}
+
+// Implement Debug manually since we don't want the password to be logged
+impl fmt::Debug for User {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("User")
+            .field("name", &self.name)
+            .field("password", &"***")
+            .field("uid", &self.uid)
+            .field("gid", &self.gid)
+            .finish()
+    }
 }
 
 #[cfg(test)]

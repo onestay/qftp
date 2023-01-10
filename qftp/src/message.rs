@@ -84,12 +84,24 @@ impl VersionResponse {
     }
 }
 
-#[derive(Message, Debug)]
+#[derive(Message)]
 pub struct LoginRequest {
     name_length: u8,
     name: String,
     password_length: u8,
     password: String,
+}
+
+// Implement Debug manually since we don't want the password to be logged
+impl fmt::Debug for LoginRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LoginRequest")
+            .field("name_length", &self.name_length)
+            .field("name", &self.name)
+            .field("password_length", &"0")
+            .field("password", &"***")
+            .finish()
+    }
 }
 
 impl LoginRequest {
