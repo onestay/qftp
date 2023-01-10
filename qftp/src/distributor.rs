@@ -7,7 +7,7 @@ use tokio::{
 };
 
 use std::collections::HashMap;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, trace};
 
 #[derive(Debug)]
 pub(crate) struct StreamRequest {

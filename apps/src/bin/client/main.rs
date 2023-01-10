@@ -1,6 +1,4 @@
 use std::{
-    collections::HashMap,
-    fmt::format,
     io::{self, Write},
     net::SocketAddr,
 };
@@ -54,8 +52,6 @@ fn handle_command_connect(args: &[&str]) {
 fn handle_command_connect_impl(addr: SocketAddr) {
     println!("{addr:#?}");
 }
-
-fn handle_command_list(args: &[&str]) {}
 
 fn display_help() {
     println!(

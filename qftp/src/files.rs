@@ -53,7 +53,7 @@ impl FileManager {
             if file_type.is_dir() {
                 let mut offset = offset.as_ref().to_path_buf();
                 offset.push(entry.path().iter().last().unwrap());
-                
+
                 FileManager::walk_dir_impl(entry.path(), &offset, result)?;
             } else if file_type.is_file() {
                 let mut relative_path = PathBuf::new();
@@ -64,7 +64,7 @@ impl FileManager {
                     .into_os_string()
                     .into_string()
                     .map_err(|_| FileError::OsStringConversionError)?;
-                    
+
                 result.push(message::ListFileResponse::new(
                     path,
                     &entry.metadata()?,
