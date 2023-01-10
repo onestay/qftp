@@ -12,7 +12,7 @@ pub mod files;
 pub mod message;
 mod server;
 pub use control_stream::ControlStream;
-pub use server::Server;
+pub use server::{Server, ServerBuilder};
 
 #[derive(Error, Debug)]
 pub enum Error {
