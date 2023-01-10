@@ -157,7 +157,17 @@ impl Client {
         }
     }
 
-    fn create_endpoint(mut client_config: ClientConfig) -> Result<Endpoint, Error> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
+        debug!("shutting down the client");
+        trace!("calling finish on the SendStream of the ControlStream");
+        self.control_stream.send().finish().await?;
+        trace!("calling finish on the SendStream of the ControlStream returned");
+        Ok(())
+    }
+
+    fn create_endpoint(
+        mut client_config: ClientConfig,
+    ) -> Result<Endpoint, Error> {
         debug!("Creating client config");
         client_config.key_log = Arc::new(KeyLogFile::new());
         debug!("Creating client");
