@@ -7,7 +7,7 @@ use tokio::{
 };
 
 use std::collections::HashMap;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace, warn};
 
 #[derive(Debug)]
 pub(crate) struct StreamRequest {
@@ -50,7 +50,22 @@ pub(crate) async fn run(
     loop {
         tokio::select! {
             s = connection.accept_uni() => {
-                let mut s = s.unwrap();
+                let mut s = match s {
+                    Ok(s) => s,
+                    Err(quinn::ConnectionError::ApplicationClosed(e)) => {
+                        if e.error_code == quinn::VarInt::from_u32(0) {
+                            debug!("ApplicationClose with zero error_code");
+                            break;
+                        }
+
+                        error!("ApplicationClose with non-zero error_code {e:?}");
+                        break;
+                    },
+                    Err(e) => {
+                        error!("accept_uni returned an error: {e:?}");
+                        break;
+                    }
+                };
                 trace!("accepted new uni stream");
                 let request_id = read_request_id(&mut s).await.unwrap();
                 check_buffer(request_id, &mut messages, &mut recv_stream_buffer);

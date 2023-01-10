@@ -7,7 +7,7 @@ use quinn::Connection;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
 
 #[derive(Debug)]
@@ -44,7 +44,20 @@ impl ConnectedClient {
     pub async fn shutdown(&mut self) -> Result<(), Error> {
         debug!("shutting down the server");
         trace!("calling finish on the SendStream of the ControlStream");
-        self.control_stream.send().finish().await?;
+        match self.control_stream.send().finish().await {
+            Ok(()) => (),
+            Err(quinn::WriteError::ConnectionLost(
+                quinn::ConnectionError::ApplicationClosed(e),
+            )) => {
+                if e.error_code != quinn::VarInt::from_u32(0) {
+                    warn!("WriteError on ControlStream finish non zero error code: {e:?}");
+                }
+            }
+
+            Err(e) => {
+                warn!("WriteError on ControlStream finish: {e:?}")
+            }
+        };
         trace!("calling finish on the SendStream of the ControlStream returned");
         Ok(())
     }
