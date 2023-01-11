@@ -187,7 +187,7 @@ impl ConnectedClient {
                 self.control_stream.send_message(version_response).await?;
             }
         }
-        debug!("finished version negotation");
+        debug!("finished version negotiation");
         Ok(())
     }
 }
