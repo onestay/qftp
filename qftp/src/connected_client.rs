@@ -6,8 +6,9 @@ use crate::{message::Message, Error};
 use quinn::Connection;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
-use tracing::{debug, trace, warn};
+use tokio::sync::{oneshot, Mutex};
+use tokio::task::JoinHandle;
+use tracing::{debug, error, trace, warn};
 const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
 
 #[derive(Debug)]
@@ -16,6 +17,21 @@ pub struct ConnectedClient {
     control_stream: ControlStream,
     user: Option<User>,
     file_manager: Arc<FileManager>,
+    running_requests: Vec<RunningRequest>,
+}
+
+#[derive(Debug)]
+struct RunningRequest {
+    handle: JoinHandle<()>,
+    cancel_ctx: oneshot::Sender<()>,
+}
+
+#[derive(Debug)]
+struct RequestContext {
+    connection: Connection,
+    file_manager: Arc<FileManager>,
+    #[allow(dead_code)]
+    cancel_ctx: oneshot::Receiver<()>,
 }
 
 impl ConnectedClient {
@@ -27,13 +43,13 @@ impl ConnectedClient {
         trace!("creating new ConnectedClient");
         let control_stream = connection.accept_bi().await?;
         trace!("accepted the control_stream");
-        let control_stream =
-            ControlStream::new(control_stream.0, control_stream.1);
+        let control_stream = ControlStream::new(control_stream.0, control_stream.1);
         let mut connected_client = ConnectedClient {
             connection,
             control_stream,
             user: None,
             file_manager,
+            running_requests: Vec::new(),
         };
 
         connected_client.negotiate_version().await?;
@@ -41,14 +57,14 @@ impl ConnectedClient {
         Ok(connected_client)
     }
 
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
+    pub async fn shutdown(mut self) -> Result<(), Error> {
         debug!("shutting down the server");
         trace!("calling finish on the SendStream of the ControlStream");
         match self.control_stream.send().finish().await {
             Ok(()) => (),
-            Err(quinn::WriteError::ConnectionLost(
-                quinn::ConnectionError::ApplicationClosed(e),
-            )) => {
+            Err(quinn::WriteError::ConnectionLost(quinn::ConnectionError::ApplicationClosed(
+                e,
+            ))) => {
                 if e.error_code != quinn::VarInt::from_u32(0) {
                     warn!("WriteError on ControlStream finish non zero error code: {e:?}");
                 }
@@ -59,8 +75,16 @@ impl ConnectedClient {
             }
         };
         trace!("calling finish on the SendStream of the ControlStream returned");
+
+        trace!("checking all requests");
+        for request in self.running_requests {
+            if !request.handle.is_finished() {
+                request.cancel_ctx.send(()).unwrap();
+            }
+        }
         Ok(())
     }
+
     async fn login(
         &mut self,
         auth_manager: Arc<Mutex<AuthManager<FileStorage>>>,
@@ -90,10 +114,33 @@ impl ConnectedClient {
             }
         }
     }
+
     pub async fn next_request(&mut self) -> Result<(), Error> {
         match message::Request::next_request(self.control_stream.recv()).await? {
             message::Request::ListFileRequest(request) => {
-                self.handle_list_files_request(request).await?;
+                let (send, recv) = oneshot::channel();
+
+                let ctx = RequestContext {
+                    connection: self.connection.clone(),
+                    file_manager: self.file_manager.clone(),
+                    cancel_ctx: recv,
+                };
+
+                let handle = tokio::spawn(async move {
+                    match ConnectedClient::handle_list_files_request(ctx, request).await {
+                        Ok(()) => {
+                            debug!("ListFileRequest successfully handled")
+                        }
+                        Err(e) => {
+                            error!("ListFileRequest failed: {e}")
+                        }
+                    }
+                });
+
+                self.running_requests.push(RunningRequest {
+                    handle,
+                    cancel_ctx: send,
+                });
             }
         }
 
@@ -101,28 +148,34 @@ impl ConnectedClient {
     }
 
     async fn handle_list_files_request(
-        &mut self,
+        ctx: RequestContext,
         request: message::ListFilesRequest,
     ) -> Result<(), Error> {
         trace!("got request {request:#?}\nopening new uni stream");
-        let mut uni = self.connection.open_uni().await?;
+        let mut uni = ctx.connection.open_uni().await?;
+
         trace!("opened new uni stream. Sending request_id");
         uni.write_u32(request.request_id()).await?;
         trace!("wrote the request ID");
-        let files = self.file_manager.walk_dir("").await.unwrap();
+
+        let files = ctx.file_manager.walk_dir("").await.unwrap();
         let msg = message::ListFileResponseHeader {
             num_files: files.len() as u32,
         };
+
         trace!("sending ListFileResponseHeader {msg:?}");
         msg.send(&mut uni).await?;
+
         trace!("sending files");
         for file in files {
             file.send(&mut uni).await?;
         }
+
         trace!("done sending files");
         uni.finish().await?;
         Ok(())
     }
+
     async fn negotiate_version(&mut self) -> Result<(), Error> {
         debug!("doing version negotation");
         let version = message::Version::recv(self.control_stream.recv()).await?;
