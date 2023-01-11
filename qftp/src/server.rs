@@ -59,11 +59,7 @@ impl ServerBuilder {
 
     /// Creates a new default [ServerConfig](rustls::ServerConfig) with the specified certs.
     /// If you want to supply your own server config you can use [with_server_config](ServerBuilder::with_server_config)
-    pub fn with_certs(
-        mut self,
-        certs: Vec<Certificate>,
-        private_key: PrivateKey,
-    ) -> Self {
+    pub fn with_certs(mut self, certs: Vec<Certificate>, private_key: PrivateKey) -> Self {
         let server_config = ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
@@ -110,8 +106,7 @@ impl Server {
         listen_addr: SocketAddr,
         server_config: ServerConfig,
     ) -> Result<Endpoint, Error> {
-        let server_config =
-            quinn::ServerConfig::with_crypto(Arc::new(server_config));
+        let server_config = quinn::ServerConfig::with_crypto(Arc::new(server_config));
         let server = Endpoint::server(server_config, listen_addr)?;
         Ok(server)
     }

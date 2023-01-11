@@ -49,10 +49,7 @@ impl ControlStream {
         &mut self.send
     }
 
-    pub async fn send_message<T: Message + Send>(
-        &mut self,
-        message: T,
-    ) -> Result<(), Error> {
+    pub async fn send_message<T: Message + Send>(&mut self, message: T) -> Result<(), Error> {
         trace!("sending message: {:#?}", message);
         message.send(&mut self.send).await?;
         Ok(())

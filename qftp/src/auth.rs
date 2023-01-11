@@ -10,10 +10,7 @@ use tokio::{
 };
 
 use argon2::{
-    password_hash::{
-        rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier,
-        SaltString,
-    },
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
 
@@ -126,24 +123,16 @@ impl<T: Storage + Send> AuthManager<T> {
         Ok(())
     }
 
-    pub async fn get_user<'a>(
-        &mut self,
-        name: &'a str,
-        password: &'a str,
-    ) -> Result<User, Error> {
+    pub async fn get_user<'a>(&mut self, name: &'a str, password: &'a str) -> Result<User, Error> {
         let user = self.storage.get_user(name).await?;
 
         #[allow(clippy::redundant_closure)]
-        let saved_password = PasswordHash::new(&user.password)
-            .map_err(|e| Into::<AuthError>::into(e))?;
+        let saved_password =
+            PasswordHash::new(&user.password).map_err(|e| Into::<AuthError>::into(e))?;
 
-        match Argon2::default()
-            .verify_password(password.as_bytes(), &saved_password)
-        {
+        match Argon2::default().verify_password(password.as_bytes(), &saved_password) {
             Ok(()) => Ok(user),
-            Err(password_hash::errors::Error::Password) => {
-                Err(AuthError::WrongPassword.into())
-            }
+            Err(password_hash::errors::Error::Password) => Err(AuthError::WrongPassword.into()),
             Err(e) => {
                 let e: AuthError = e.into();
                 Err(e.into())

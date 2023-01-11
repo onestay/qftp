@@ -10,14 +10,22 @@ native-certs = ["dep:rustls-native-certs"]
 
 [dependencies]
 color-eyre = "0.6"
-quinn = {version = "0.9", default-features = false, features = ["tls-rustls", "ring", "runtime-tokio", "native-certs"]}
-tokio = {version = "1", features = ["full"]}
-rustls = {version = "0.20", features=["quic", "dangerous_configuration"], default-features = false}
+quinn = { version = "0.9", default-features = false, features = [
+    "tls-rustls",
+    "ring",
+    "runtime-tokio",
+    "native-certs",
+] }
+tokio = { version = "1", features = ["full"] }
+rustls = { version = "0.20", features = [
+    "quic",
+    "dangerous_configuration",
+], default-features = false }
 rustls-native-certs = { version = "0.6", optional = true }
 thiserror = "1"
 tracing = "0.1"
 async-trait = "0.1"
-qftp-derive = { path = "../qftp-derive"}
+qftp-derive = { path = "../qftp-derive" }
 futures-io = "0.3"
 paste = "1.0"
 argon2 = "0.4"
@@ -25,6 +33,7 @@ rand_core = { version = "0.6", features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 password-hash = "0.4"
+futures-core = "0.3"
 
 [dev-dependencies]
 futures = "0.3.0"

@@ -6,11 +6,9 @@ mod test {
     use tracing::Level;
     use tracing_subscriber::filter::EnvFilter;
     fn read_test_certs() -> (Certificate, PrivateKey) {
-        let cert =
-            fs::read("cert/dev.crt.der").expect("Failed to read certificate");
+        let cert = fs::read("cert/dev.crt.der").expect("Failed to read certificate");
         let cert = Certificate(cert);
-        let priv_key =
-            fs::read("cert/dev.key.der").expect("Failed to read private key");
+        let priv_key = fs::read("cert/dev.key.der").expect("Failed to read private key");
         let priv_key = PrivateKey(priv_key);
 
         (cert, priv_key)
@@ -35,8 +33,8 @@ mod test {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn successful_server_client_connection() {
         std::env::set_var("RUST_BACKTRACE", "full");
-        let env_filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("qftp=trace"));
+        let env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("qftp=trace"));
         tracing_subscriber::fmt()
             .with_max_level(Level::TRACE)
             .with_env_filter(env_filter)

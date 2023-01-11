@@ -1,5 +1,5 @@
 use crate::message;
-use std::fs;
+use std::fs::{self};
 use std::path::{Path, PathBuf};
 use thiserror::Error as ThisError;
 
@@ -7,9 +7,7 @@ use thiserror::Error as ThisError;
 pub enum FileError {
     #[error("the base path has to be a directory or don't have permissions")]
     BasePathNotADir,
-    #[error(
-        "used an absolute path as an argument to a function wanting an offset"
-    )]
+    #[error("used an absolute path as an argument to a function wanting an offset")]
     PathIsAbsolute,
     #[error("IO error occured")]
     IOError(#[from] std::io::Error),
@@ -65,10 +63,7 @@ impl FileManager {
                     .into_string()
                     .map_err(|_| FileError::OsStringConversionError)?;
 
-                result.push(message::ListFileResponse::new(
-                    path,
-                    &entry.metadata()?,
-                ))
+                result.push(message::ListFileResponse::new(path, &entry.metadata()?))
             }
         }
 
@@ -98,6 +93,15 @@ impl FileManager {
 
         result
     }
+    // this is a first implementation of this leaving a lot of performance on the table
+    // eventually I want to use some io_uring magic to make reading a lot of files really fast
+    // this will also read all the files into memory first
+    pub(crate) async fn _read_file(
+        &self,
+        _offset: impl AsRef<Path> + Send + 'static + Copy,
+    ) -> Result<Vec<u8>, FileError> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -107,8 +111,7 @@ mod test {
     async fn test_walk_dir() {
         let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
         println!("{path}");
-        let f = FileManager::new(path)
-            .expect("expect creating a file manager not to fail");
+        let f = FileManager::new(path).expect("expect creating a file manager not to fail");
         let result = f.walk_dir("").await.unwrap();
 
         assert_eq!(result.len(), 4)
@@ -118,8 +121,7 @@ mod test {
     async fn test_walk_dir_with_offset() {
         let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
         println!("{path}");
-        let f = FileManager::new(path)
-            .expect("expect creating a file manager not to fail");
+        let f = FileManager::new(path).expect("expect creating a file manager not to fail");
         let result = f.walk_dir("b").await.unwrap();
 
         assert_eq!(result.len(), 2)

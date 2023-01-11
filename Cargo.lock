@@ -663,6 +663,7 @@ dependencies = [
  "async-trait",
  "color-eyre",
  "futures",
+ "futures-core",
  "futures-io",
  "password-hash",
  "paste",

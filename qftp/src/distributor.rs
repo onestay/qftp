@@ -18,11 +18,7 @@ pub(crate) struct StreamRequest {
 }
 
 impl StreamRequest {
-    pub(crate) fn new(
-        num_streams: u16,
-        request_id: u32,
-        sender: Sender<Vec<RecvStream>>,
-    ) -> Self {
+    pub(crate) fn new(num_streams: u16, request_id: u32, sender: Sender<Vec<RecvStream>>) -> Self {
         let response = Vec::with_capacity(num_streams as usize);
 
         StreamRequest {
@@ -38,10 +34,7 @@ impl StreamRequest {
     }
 }
 
-pub(crate) async fn run(
-    connection: Connection,
-    mut channel: UnboundedReceiver<StreamRequest>,
-) {
+pub(crate) async fn run(connection: Connection, mut channel: UnboundedReceiver<StreamRequest>) {
     trace!("starting the stream distributor");
     let mut messages = HashMap::new();
     let mut recv_stream_buffer = HashMap::new();
