@@ -197,9 +197,39 @@ pub struct ListFileResponse {
 
 impl fmt::Display for ListFileResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\n\tSize: {} bytes\n\tAccessed: {:?}\n\tCreated: {:?}\n\tModified: {:?}", 
-        self.file_name, self.file_len, self.accessed(), self.created(), self.modified())
+        write!(
+            f,
+            "{}\n\tSize: {} bytes\n\tAccessed: {:?}\n\tCreated: {:?}\n\tModified: {:?}",
+            self.file_name,
+            self.file_len,
+            self.accessed(),
+            self.created(),
+            self.modified()
+        )
     }
+}
+
+#[derive(Debug, Message)]
+pub struct GetFilesRequest {
+    path_len: u32,
+    path: String,
+    request_id: u32,
+    num_streams: u32,
+}
+
+impl GetFilesRequest {
+    pub fn num_streams(&self) -> u32 {
+        self.num_streams
+    }
+
+    pub fn request_id(&self) -> u32 {
+        self.request_id
+    }
+}
+
+#[derive(Debug, Message)]
+pub struct GetFileResponseHeader {
+    pub num_files: u32,
 }
 
 impl ListFileResponse {
