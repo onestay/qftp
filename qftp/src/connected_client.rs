@@ -1,12 +1,12 @@
 use crate::auth::{AuthManager, FileStorage, User};
 use crate::control_stream::ControlStream;
-use crate::files::FileManager;
+use crate::files::{FileManager, QFile};
 use crate::message;
 use crate::{message::Message, Error};
-use quinn::Connection;
+use quinn::{Connection, SendStream};
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::{oneshot, Mutex};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, trace, warn};
 const SERVER_SUPPORTED_VERSION: [u8; 1] = [1];
@@ -32,6 +32,20 @@ struct RequestContext {
     file_manager: Arc<FileManager>,
     #[allow(dead_code)]
     cancel_ctx: oneshot::Receiver<()>,
+}
+
+impl RequestContext {
+    fn new(connected_client: &ConnectedClient) -> (Self, oneshot::Sender<()>) {
+        let (send, recv) = oneshot::channel();
+
+        let ctx = RequestContext {
+            connection: connected_client.connection.clone(),
+            file_manager: connected_client.file_manager.clone(),
+            cancel_ctx: recv,
+        };
+
+        (ctx, send)
+    }
 }
 
 impl ConnectedClient {
@@ -118,13 +132,7 @@ impl ConnectedClient {
     pub async fn next_request(&mut self) -> Result<(), Error> {
         match message::Request::next_request(self.control_stream.recv()).await? {
             message::Request::ListFileRequest(request) => {
-                let (send, recv) = oneshot::channel();
-
-                let ctx = RequestContext {
-                    connection: self.connection.clone(),
-                    file_manager: self.file_manager.clone(),
-                    cancel_ctx: recv,
-                };
+                let (ctx, send) = RequestContext::new(self);
 
                 let handle = tokio::spawn(async move {
                     match ConnectedClient::handle_list_files_request(ctx, request).await {
@@ -133,6 +141,25 @@ impl ConnectedClient {
                         }
                         Err(e) => {
                             error!("ListFileRequest failed: {e}")
+                        }
+                    }
+                });
+
+                self.running_requests.push(RunningRequest {
+                    handle,
+                    cancel_ctx: send,
+                });
+            }
+            message::Request::GetFilesRequest(request) => {
+                let (ctx, send) = RequestContext::new(self);
+
+                let handle = tokio::spawn(async move {
+                    match ConnectedClient::handle_get_files_request(ctx, request).await {
+                        Ok(()) => {
+                            debug!("GetFilesRequest successfully handled")
+                        }
+                        Err(e) => {
+                            error!("GetFilesRequest failed: {e}")
                         }
                     }
                 });
@@ -158,7 +185,14 @@ impl ConnectedClient {
         uni.write_u32(request.request_id()).await?;
         trace!("wrote the request ID");
 
-        let files = ctx.file_manager.walk_dir("").await.unwrap();
+        let files: Vec<message::ListFileResponse> = ctx
+            .file_manager
+            .walk_dir("")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.into())
+            .collect();
         let msg = message::ListFileResponseHeader {
             num_files: files.len() as u32,
         };
@@ -176,6 +210,107 @@ impl ConnectedClient {
         Ok(())
     }
 
+    async fn handle_get_files_request(
+        ctx: RequestContext,
+        request: message::GetFilesRequest,
+    ) -> Result<(), Error> {
+        // the purpose of this function is to basically just open the streams and write the reqeust ID
+        // the actual logic is implemented in handle_get_files_request_impl
+        let mut streams = Vec::new();
+        let mut join_set = tokio::task::JoinSet::new();
+        trace!("created the join set, spawning streams");
+        // TODO: have some upper limit for amount of channels to be spawned to stop a DOS attack
+        for i in 0..request.num_streams() {
+            trace!("spawning stream {i}");
+            let connection = ctx.connection.clone();
+            let request_id = request.request_id();
+
+            join_set.spawn(async move {
+                let stream = connection.open_uni().await;
+                let stream: Result<SendStream, Error> = match stream {
+                    Ok(mut stream) => {
+                        trace!("stream {i} has been connected. sending request_id {request_id}");
+                        match stream.write_u32(request_id).await {
+                            Ok(()) => {
+                                trace!("stream {i} request_id {request_id} has been written");
+                                Ok(stream)
+                            }
+                            Err(e) => Err(e.into()),
+                        }
+                    }
+                    Err(e) => Err(e.into()),
+                };
+
+                stream
+            });
+        }
+
+        trace!("joining all stream creation threads");
+        while let Some(stream) = join_set.join_next().await {
+            streams.push(stream.expect("JoinError")?);
+        }
+
+        trace!("all streams collected, calling handle_get_files_request_impl");
+
+        ConnectedClient::handle_get_files_request_impl(ctx.file_manager.clone(), streams, request)
+            .await
+    }
+
+    async fn handle_get_files_request_impl<T>(
+        file_manager: Arc<FileManager>,
+        mut streams: Vec<T>,
+        request: message::GetFilesRequest,
+    ) -> Result<(), Error>
+    where
+        T: AsyncWrite + Send + Sync + Unpin + 'static,
+    {
+        let files = file_manager.walk_dir("").await.unwrap();
+        let mut join_set: tokio::task::JoinSet<Result<(), Error>> = tokio::task::JoinSet::new();
+        let mut channels = Vec::new();
+        for i in 0..request.num_streams() {
+            // TODO: it's probably better to use a not unbounded channel here(?)
+            let (send, mut recv) = mpsc::unbounded_channel::<QFile>();
+            channels.push(send);
+            trace!("spawning thread {i} to handle file sending");
+            let mut writer = streams
+                .pop()
+                .expect("we have less streams than requested in num_streams");
+
+            join_set.spawn(async move {
+                while let Some(mut file) = recv.recv().await {
+                    trace!("Got {file:?} to send");
+                    file.send(&mut writer).await?;
+                }
+                trace!("Got None");
+                Ok(())
+            });
+        }
+
+        // TODO: this is pretty inefficient. A better way would probably be to use select or something
+        // and make the threads signal when they are ready for another message
+        for (i, file) in files.into_iter().enumerate() {
+            channels[i % channels.len()]
+                .send(file)
+                .expect("couldn't send");
+        }
+
+        for channel in channels {
+            drop(channel);
+        }
+
+        while let Some(res) = join_set.join_next().await {
+            match res {
+                Ok(Ok(())) => (),
+                Ok(Err(e)) => error!("Error in handle_get_files_request_impl worker thread: {e}"),
+                Err(e) => error!(
+                    "JoinError while joining handle_get_files_request_impl worker threads: {e}"
+                ),
+            }
+        }
+
+        Ok(())
+    }
+
     async fn negotiate_version(&mut self) -> Result<(), Error> {
         debug!("doing version negotation");
         let version = message::Version::recv(self.control_stream.recv()).await?;
@@ -189,5 +324,31 @@ impl ConnectedClient {
         }
         debug!("finished version negotiation");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tracing::Level;
+    use tracing_subscriber::EnvFilter;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_handle_get_files_request_impl() {
+        let env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("qftp=trace"));
+        tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .with_env_filter(env_filter)
+            .init();
+        let request = message::GetFilesRequest::new(String::from("a"), 1);
+        let path = format!("{}/tests/walk_dir", env!("CARGO_MANIFEST_DIR"));
+        let file_manager =
+            Arc::new(FileManager::new(path).expect("expect creating a file manager not to fail"));
+        let a = vec![vec![]];
+        ConnectedClient::handle_get_files_request_impl(file_manager, a, request)
+            .await
+            .expect("expect this not to panic");
     }
 }

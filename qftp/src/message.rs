@@ -8,7 +8,7 @@ use std::{
 use qftp_derive::Message;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::Error;
+use crate::{files::QFile, Error};
 
 #[async_trait::async_trait]
 pub trait Message: Debug + Send {
@@ -30,8 +30,10 @@ pub trait Message: Debug + Send {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum Request {
     ListFileRequest(ListFilesRequest),
+    GetFilesRequest(GetFilesRequest),
 }
 
 impl Request {
@@ -42,10 +44,15 @@ impl Request {
     {
         let request_id = reader.read_u16().await?;
         match request_id {
-            0x1 => {
+            0x01 => {
                 let request = ListFilesRequest::recv(reader).await?;
 
                 Ok(Self::ListFileRequest(request))
+            }
+            0x02 => {
+                let request = GetFilesRequest::recv(reader).await?;
+
+                Ok(Self::GetFilesRequest(request))
             }
             id => Err(Error::MessageIDError(id)),
         }
@@ -195,6 +202,12 @@ pub struct ListFileResponse {
     mode: u32,
 }
 
+impl From<QFile> for ListFileResponse {
+    fn from(value: QFile) -> Self {
+        ListFileResponse::new(value.relative_path.display(), &value.metadata)
+    }
+}
+
 impl fmt::Display for ListFileResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -224,6 +237,15 @@ impl GetFilesRequest {
 
     pub fn request_id(&self) -> u32 {
         self.request_id
+    }
+
+    pub fn new(path: String, num_streams: u32) -> Self {
+        GetFilesRequest {
+            path_len: path.len() as u32,
+            path,
+            request_id: 1243,
+            num_streams,
+        }
     }
 }
 
